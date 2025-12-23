@@ -4,13 +4,17 @@ Data loader for Binance market data.
 Provides synchronous interface for loading data with automatic download support.
 """
 
-import pandas as pd
-import numpy as np
+import asyncio
+import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
-from datetime import datetime, timedelta
-import logging
 
+import numpy as np
+import pandas as pd
+
+from .aggbar import AggBar
+from .bar import TimeBar
 from .utils.fetch import BinanceDataDownloader
 
 
@@ -91,8 +95,6 @@ class BinanceDataLoader:
         Returns:
             DataFrame with loaded data
         """
-        import asyncio
-
         start_dt, end_dt = self._calculate_date_range(start_date, end_date, days)
         resolved_start = start_dt.strftime("%Y-%m-%d")
         resolved_end = end_dt.strftime("%Y-%m-%d")
@@ -236,6 +238,75 @@ class BinanceDataLoader:
         if columns:
             df = df[columns]
         return df
+    
+    def load_aggbar(
+        self,
+        symbols: List[str],
+        data_type: str,
+        market_type: str,
+        futures_type: str = 'cm',
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: Optional[int] = None,
+        columns: Optional[List[str]] = None,
+        force_download: bool = False,
+        **bar_kwargs,
+    ) -> AggBar:
+        """
+        Load data for multiple symbols and return as AggBar.
+        
+        Args:
+            symbols: List of trading symbols
+            data_type: Data type (trades/klines/aggTrades)
+            market_type: Market type (spot/futures)
+            futures_type: Futures type (cm/um)
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            days: Number of days to load
+            columns: Specific columns to return
+            force_download: Force re-download even if files exist
+            **bar_kwargs: Additional arguments passed to TimeBar constructor
+                         (e.g., timestamp_col, price_col, volume_col, interval_ms)
+            
+        Returns:
+            AggBar object containing aggregated bar data for all symbols
+            
+        Example:
+            >>> loader = BinanceDataLoader()
+            >>> agg = loader.load_aggbar(
+            ...     symbols=["BTCUSDT", "ETHUSDT"],
+            ...     data_type="aggTrades",
+            ...     market_type="futures",
+            ...     futures_type="um",
+            ...     start_date="2024-01-01",
+            ...     days=7,
+            ...     timestamp_col="transact_time",
+            ...     price_col="price",
+            ...     volume_col="quantity",
+            ...     interval_ms=60_000
+            ... )
+        """
+        bars = []
+        for symbol in symbols:
+            self.logger.info(f"Loading data for {symbol}...")
+            df = self.load_data(
+                symbol=symbol,
+                data_type=data_type,
+                market_type=market_type,
+                futures_type=futures_type,
+                start_date=start_date,
+                end_date=end_date,
+                days=days,
+                columns=columns,
+                force_download=force_download,
+            )
+            bar = TimeBar(df, **bar_kwargs)
+            bars.append(bar)
+            self.logger.info(f"Created {len(bar)} bars for {symbol}")
+        
+        agg = AggBar(bars)
+        self.logger.info(f"Created AggBar with {len(agg.symbols)} symbols, {len(agg)} total rows")
+        return agg
     
     def _calculate_date_range(
         self,

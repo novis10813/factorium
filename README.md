@@ -52,27 +52,24 @@ uv sync --dev
 ## 快速開始
 
 ```python
-from factorium import BinanceDataLoader, TimeBar, AggBar
+from factorium import BinanceDataLoader
 
-# 1. 載入資料
+# 1. 載入多標的資料並建立 AggBar
 loader = BinanceDataLoader()
-df = loader.load_data(
-    symbol="BTCUSDT",
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT", "ETHUSDT"],
     data_type="aggTrades",
     market_type="futures",
     futures_type="um",
     start_date="2024-01-01",
-    days=7
+    days=7,
+    timestamp_col="transact_time",
+    price_col="price",
+    volume_col="quantity",
+    interval_ms=60_000  # 1 分鐘 K 棒
 )
 
-# 2. 建立 K 棒 (1 分鐘)
-bar = TimeBar(df, timestamp_col="transact_time", price_col="price", 
-              volume_col="quantity", interval_ms=60_000)
-
-# 3. 建立多標的容器
-agg = AggBar([bar])
-
-# 4. 提取因子並進行運算
+# 2. 提取因子並進行運算
 close = agg['close']
 momentum = close.ts_delta(20) / close.ts_shift(20)
 ranked = momentum.rank()
@@ -173,6 +170,47 @@ python -m factorium.utils.fetch -s BTCUSDT -t aggTrades -m futures -f um -r 2024
 
 # 下載現貨 K 線資料
 python -m factorium.utils.fetch -s BTCUSDT -t klines -m spot -r 2024-01-01:2024-01-31
+```
+
+#### 載入多標的資料（load_aggbar）
+
+`load_aggbar` 方法可以一次載入多個標的的資料，自動建立 K 棒並返回 `AggBar` 物件：
+
+```python
+from factorium import BinanceDataLoader
+
+loader = BinanceDataLoader()
+
+# 一次載入多個標的，直接返回 AggBar
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT", "ETHUSDT", "BNBUSDT"],  # 多個標的
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=7,
+    # TimeBar 參數
+    timestamp_col="transact_time",
+    price_col="price",
+    volume_col="quantity",
+    interval_ms=60_000  # 1 分鐘 K 棒
+)
+
+# 直接使用
+close = agg['close']
+momentum = close.ts_delta(20) / close.ts_shift(20)
+```
+
+這個方法等同於：
+
+```python
+# 手動方式
+bars = []
+for symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]:
+    df = loader.load_data(symbol=symbol, ...)
+    bar = TimeBar(df, ...)
+    bars.append(bar)
+agg = AggBar(bars)
 ```
 
 ---
@@ -562,31 +600,25 @@ signed_sqrt = returns.signed_pow(0.5)
 ### 範例 1：動量因子研究
 
 ```python
-from factorium import BinanceDataLoader, TimeBar, AggBar
+from factorium import BinanceDataLoader
 
 # 1. 載入多個標的資料
 loader = BinanceDataLoader()
-symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
-bars = []
-
-for symbol in symbols:
-    df = loader.load_data(
-        symbol=symbol,
-        data_type="aggTrades",
-        market_type="futures",
-        futures_type="um",
-        start_date="2024-01-01",
-        days=30
-    )
-    bar = TimeBar(df, timestamp_col="transact_time", price_col="price", 
-                  volume_col="quantity", interval_ms=60_000)
-    bars.append(bar)
-
-# 2. 建立 AggBar
-agg = AggBar(bars)
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"],
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=30,
+    timestamp_col="transact_time",
+    price_col="price",
+    volume_col="quantity",
+    interval_ms=60_000
+)
 print(agg.info())
 
-# 3. 計算因子
+# 2. 計算因子
 close = agg['close']
 volume = agg['volume']
 
@@ -602,31 +634,31 @@ vwap_deviation = (close - vwap) / vwap
 volatility = close.ts_std(20)
 risk_adjusted_momentum = momentum_20 / volatility
 
-# 4. 橫截面排名
+# 3. 橫截面排名
 momentum_rank = risk_adjusted_momentum.rank()
 
-# 5. 輸出結果
+# 4. 輸出結果
 print(momentum_rank.data.tail(20))
 ```
 
 ### 範例 2：均值回歸因子
 
 ```python
-from factorium import BinanceDataLoader, TimeBar, AggBar
+from factorium import BinanceDataLoader
 
 loader = BinanceDataLoader()
-df = loader.load_data(
-    symbol="BTCUSDT",
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT"],
     data_type="aggTrades", 
     market_type="futures",
     futures_type="um",
     start_date="2024-01-01",
-    days=30
+    days=30,
+    timestamp_col="transact_time",
+    price_col="price",
+    volume_col="quantity",
+    interval_ms=60_000
 )
-
-bar = TimeBar(df, timestamp_col="transact_time", price_col="price",
-              volume_col="quantity", interval_ms=60_000)
-agg = AggBar([bar])
 
 close = agg['close']
 
