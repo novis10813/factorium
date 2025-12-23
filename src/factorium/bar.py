@@ -55,19 +55,28 @@ class BaseBar(ABC):
     
     def _aggregate_by_group(self, group_id: np.ndarray) -> pd.DataFrame:
         """Generic grouping aggregation logic"""
-        result = self._df.groupby(group_id).agg(
+        
+        df_temp = self._df.assign(
+            _turnover=self._df[self.price_col] * self._df[self.volume_col]
+        )
+        
+        result = df_temp.groupby(group_id).agg(
             start_time=(self.timestamp_col, "first"),
             end_time=(self.timestamp_col, "last"),
             open=(self.price_col, "first"),
             high=(self.price_col, "max"),
             low=(self.price_col, "min"),
             close=(self.price_col, "last"),
-            volume=(self.volume_col, "sum")
+            volume=(self.volume_col, "sum"),
+            _total_turnover=('_turnover', 'sum')
         )
+        
+        result['vwap'] = result['_total_turnover'] / result['volume']
+        result = result.drop(columns=['_total_turnover'])
         
         # Add buyer/seller statistics if is_buyer_maker column exists
         if 'is_buyer_maker' in self._df.columns:
-            df_temp = self._df.assign(
+            df_temp = df_temp.assign(
                 _is_buyer=(~self._df['is_buyer_maker']).astype(int),
                 _is_seller=self._df['is_buyer_maker'].astype(int),
                 _buyer_volume=self._df[self.volume_col] * (~self._df['is_buyer_maker']),
@@ -166,16 +175,23 @@ class TimeBar(BaseBar):
         )
     
     def _aggregate_by_group(self, group_id: np.ndarray) -> pd.DataFrame:
-        result = self._df.groupby(group_id).agg(
+        df_temp = self._df.assign(
+            _turnover=self._df[self.price_col] * self._df[self.volume_col]
+        )
+        result = df_temp.groupby(group_id).agg(
             open=(self.price_col, "first"),
             high=(self.price_col, "max"),
             low=(self.price_col, "min"),
             close=(self.price_col, "last"),
-            volume=(self.volume_col, "sum")
+            volume=(self.volume_col, "sum"),
+            _total_turnover=('_turnover', 'sum')
         )
         
+        result['vwap'] = result['_total_turnover'] / result['volume']
+        result = result.drop(columns=['_total_turnover'])
+        
         if 'is_buyer_maker' in self._df.columns:
-            df_temp = self._df.assign(
+            df_temp = df_temp.assign(
                 _is_buyer=(~self._df['is_buyer_maker']).astype(int),
                 _is_seller=self._df['is_buyer_maker'].astype(int),
                 _buyer_volume=self._df[self.volume_col] * (~self._df['is_buyer_maker']),
@@ -202,7 +218,7 @@ class TimeBar(BaseBar):
         result['start_time'] = start_times
         result['end_time'] = end_times
         
-        base_columns = ['start_time', 'end_time', 'open', 'high', 'low', 'close', 'volume']
+        base_columns = ['start_time', 'end_time', 'open', 'high', 'low', 'close', 'volume', 'vwap']
         extra_columns = [col for col in result.columns if col not in base_columns]
         result = result[base_columns + extra_columns]
         

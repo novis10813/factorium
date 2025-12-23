@@ -49,6 +49,7 @@ def test_timebar_creation(sample_trades):
     assert 'low' in bar.bars.columns
     assert 'close' in bar.bars.columns
     assert 'volume' in bar.bars.columns
+    assert 'vwap' in bar.bars.columns
     assert 'start_time' in bar.bars.columns
     assert 'end_time' in bar.bars.columns
     assert 'symbol' in bar.bars.columns
@@ -180,3 +181,100 @@ def test_aggbar_slice(sample_trades):
     assert len(sliced) < len(agg)
     assert sliced.data['start_time'].min() >= start_ts
     assert sliced.data['end_time'].max() <= mid_ts
+
+
+def test_timebar_has_vwap(sample_trades):
+    """Test that TimeBar includes VWAP column."""
+    bar = TimeBar(
+        sample_trades,
+        timestamp_col='ts_init',
+        price_col='price',
+        volume_col='size',
+        interval_ms=60_000
+    )
+    
+    assert 'vwap' in bar.bars.columns
+    assert not bar.bars['vwap'].isna().any()
+    assert (bar.bars['vwap'] > 0).all()  # VWAP should be positive
+
+
+def test_vwap_calculation(sample_trades):
+    """Test that VWAP is calculated correctly."""
+    bar = TimeBar(
+        sample_trades,
+        timestamp_col='ts_init',
+        price_col='price',
+        volume_col='size',
+        interval_ms=60_000
+    )
+    
+    # Verify VWAP calculation: sum(price * volume) / sum(volume)
+    for idx, row in bar.bars.iterrows():
+        # Get original trades for this bar
+        start_time = row['start_time']
+        end_time = row['end_time']
+        
+        bar_trades = sample_trades[
+            (sample_trades['ts_init'] >= start_time) & 
+            (sample_trades['ts_init'] < end_time)
+        ]
+        
+        if len(bar_trades) > 0:
+            expected_vwap = (bar_trades['price'] * bar_trades['size']).sum() / bar_trades['size'].sum()
+            assert abs(row['vwap'] - expected_vwap) < 1e-10, \
+                f"VWAP mismatch at bar {idx}: expected {expected_vwap}, got {row['vwap']}"
+
+
+def test_all_bar_types_have_vwap(sample_trades):
+    """Test that all bar types include VWAP column."""
+    # Test TickBar
+    tick_bar = TickBar(
+        sample_trades,
+        timestamp_col='ts_init',
+        price_col='price',
+        volume_col='size',
+        interval_ticks=100
+    )
+    assert 'vwap' in tick_bar.bars.columns
+    assert not tick_bar.bars['vwap'].isna().any()
+    
+    # Test VolumeBar
+    total_volume = sample_trades['size'].sum()
+    target_volume = total_volume / 10
+    volume_bar = VolumeBar(
+        sample_trades,
+        timestamp_col='ts_init',
+        price_col='price',
+        volume_col='size',
+        interval_volume=target_volume
+    )
+    assert 'vwap' in volume_bar.bars.columns
+    assert not volume_bar.bars['vwap'].isna().any()
+    
+    # Test DollarBar
+    total_dollar = (sample_trades['size'] * sample_trades['price']).sum()
+    target_dollar = total_dollar / 10
+    dollar_bar = DollarBar(
+        sample_trades,
+        timestamp_col='ts_init',
+        price_col='price',
+        volume_col='size',
+        interval_dollar=int(target_dollar)
+    )
+    assert 'vwap' in dollar_bar.bars.columns
+    assert not dollar_bar.bars['vwap'].isna().any()
+
+
+def test_vwap_between_price_range(sample_trades):
+    """Test that VWAP is between low and high prices for each bar."""
+    bar = TimeBar(
+        sample_trades,
+        timestamp_col='ts_init',
+        price_col='price',
+        volume_col='size',
+        interval_ms=60_000
+    )
+    
+    for _, row in bar.bars.iterrows():
+        assert row['low'] <= row['vwap'] <= row['high'], \
+            f"VWAP {row['vwap']} should be between low {row['low']} and high {row['high']}"
