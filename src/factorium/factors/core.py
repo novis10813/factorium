@@ -37,6 +37,29 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
     def __init__(self, data: Union["AggBar", pd.DataFrame, Path], name: Optional[str] = None):
         super().__init__(data, name)
     
+    @classmethod
+    def from_expression(cls, expr: str, context: Dict[str, "Factor"]) -> "Factor":
+        """
+        Create a Factor from an expression string.
+        
+        Args:
+            expr: Expression string using functional syntax (e.g., "ts_delta(close, 20) / ts_shift(close, 20)")
+            context: Dictionary mapping variable names to Factor objects
+            
+        Returns:
+            Factor: The resulting factor from the expression
+            
+        Example:
+            >>> close = agg["close"]
+            >>> momentum = Factor.from_expression(
+            ...     "ts_delta(close, 20) / ts_shift(close, 20)",
+            ...     context={'close': close}
+            ... )
+        """
+        from .parser import FactorExpressionParser
+        parser = FactorExpressionParser()
+        return parser.parse(expr, context)
+    
     def eval(
         self,
         prices: "Factor",
