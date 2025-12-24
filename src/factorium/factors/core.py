@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.figure as mpl_figure
 
-from typing import Union, Optional, List, Tuple, TYPE_CHECKING
+from typing import Union, Optional, List, Tuple, Dict, Any, TYPE_CHECKING
 from pathlib import Path
 from datetime import datetime
 
@@ -36,6 +36,39 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
     
     def __init__(self, data: Union["AggBar", pd.DataFrame, Path], name: Optional[str] = None):
         super().__init__(data, name)
+    
+    def eval(
+        self,
+        prices: "Factor",
+        periods: List[int] = (1, 5, 10),
+        quantiles: int = 5,
+        save_path: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Run a full evaluation report for the factor.
+        
+        Args:
+            prices: A Factor object containing price data (e.g., close prices)
+            periods: List of holding periods to evaluate (e.g., [1, 5, 10] days)
+            quantiles: Number of quantiles for layer testing
+            save_path: Path to save the evaluation report plot (e.g., 'report.png')
+            **kwargs: Additional arguments passed to the evaluator
+            
+        Returns:
+            Dictionary containing evaluation metrics:
+            - ic_mean: Mean IC for each period
+            - ic_ir: IC Information Ratio for each period
+            - turnover_mean: Average factor turnover
+            - layer_returns: Average returns for each quantile
+            - spread: Long-short spread (Top - Bottom quantile)
+            
+        Example:
+            >>> factor.eval(prices=close_factor, periods=[1, 5, 20], save_path='eval.png')
+        """
+        from .evaluation import FactorEvaluator
+        evaluator = FactorEvaluator(self, prices)
+        return evaluator.run_full_report(periods=periods, quantiles=quantiles, save_path=save_path, **kwargs)
     
     def plot(
         self,
