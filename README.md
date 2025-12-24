@@ -431,39 +431,9 @@ df = agg.to_df()
 
 ### Factor - 因子運算
 
-`Factor` 是 Factorium 的核心類別，代表一個多標的時間序列因子，支援豐富的運算子。
+`Factor` 是 Factorium 的核心因子容器，代表「多標的時間序列因子」，與 `Bar` / `AggBar` 串接，用來進行時間序列、橫截面與數學運算，並支援因子繪圖。
 
-#### 建立 Factor
-
-```python
-from factorium import Factor, AggBar
-
-# 從 AggBar 提取
-agg = AggBar([bar1, bar2])
-close = agg['close']
-
-# 從 DataFrame 建立
-factor = Factor(df, name="my_factor")
-
-# 從檔案建立
-factor = Factor("./factors/momentum.csv", name="momentum")
-factor = Factor("./factors/momentum.parquet", name="momentum")
-```
-
-#### 基本運算
-
-```python
-close = agg['close']
-volume = agg['volume']
-
-# 算術運算
-returns = (close - close.ts_shift(1)) / close.ts_shift(1)
-vwap = (close * volume) / volume
-
-# 比較運算（返回 0/1）
-is_up = close > close.ts_shift(1)
-is_high_volume = volume > volume.ts_mean(20)
-```
+更完整的 API、使用範例與 `.plot()` 視覺化說明請參考：[`docs/factor.md`](docs/factor.md)
 
 ---
 
