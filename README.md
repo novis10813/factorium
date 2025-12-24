@@ -435,6 +435,37 @@ df = agg.to_df()
 
 更完整的 API、使用範例與 `.plot()` 視覺化說明請參考：[`docs/factor.md`](docs/factor.md)
 
+#### 因子表達式解析器
+
+Factorium 提供強大的表達式解析功能，允許使用字符串表達式來構建因子，類似於 alpha101 的風格：
+
+```python
+from factorium import Factor
+
+close = agg['close']
+
+# 使用表達式構建因子
+momentum = Factor.from_expression(
+    "ts_delta(close, 20) / ts_shift(close, 20)",
+    context={'close': close}
+)
+
+# 支援中綴運算子
+complex_factor = Factor.from_expression(
+    "(close + volume) * 2 - ts_mean(close, 10)",
+    context={'close': close, 'volume': volume}
+)
+```
+
+表達式解析器支援：
+- 函數調用：`ts_delta(close, 20)`、`rank(momentum)` 等
+- 變數引用：`close`、`volume`（從 context 解析）
+- 數值常數：整數和浮點數
+- 二元運算子：`+`、`-`、`*`、`/`（支援運算子優先順序）
+- 括號：`(expression)` 用於控制運算順序
+
+更詳細的說明與範例請參考：[`docs/parser.md`](docs/parser.md)
+
 ---
 
 ## 因子運算子
