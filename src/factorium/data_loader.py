@@ -1,7 +1,7 @@
 """
 Data loader for Binance market data.
 
-Provides synchronous interface for loading data with automatic download support.
+Provides synchronous interface for loading Parquet data (Hive partitioned) via DuckDB.
 """
 
 import asyncio
@@ -10,17 +10,20 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
 
-import numpy as np
+import duckdb
 import pandas as pd
 
 from .aggbar import AggBar
 from .bar import TimeBar
 from .utils.fetch import BinanceDataDownloader
+from .utils.parquet import get_market_string, build_hive_path
 
 
 class BinanceDataLoader:
     """
     Data loader for Binance market data with automatic download.
+    
+    Uses DuckDB to query Parquet files stored in Hive partition format.
     
     Args:
         base_path: Base directory for data storage
@@ -101,7 +104,7 @@ class BinanceDataLoader:
 
         if force_download or not self._check_all_files_exist(
             symbol, data_type, market_type, futures_type,
-            resolved_start, resolved_end, days=None,
+            start_dt, end_dt,
         ):
             asyncio.run(
                 self.downloader.download_data(
@@ -115,80 +118,64 @@ class BinanceDataLoader:
             )
             self.logger.info("Download completed.")
 
-        return self._read_data(
+        return self._read_data_duckdb(
             symbol, data_type, market_type, futures_type,
-            resolved_start, resolved_end, days=None, columns=columns,
+            start_dt, end_dt, columns=columns,
         )
     
-    def _read_data(
-        self,
-        symbol: str,
-        data_type: str,
-        market_type: str,
-        futures_type: str = 'cm',
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        days: Optional[int] = None,
-        columns: Optional[List[str]] = None,
-    ) -> pd.DataFrame:
-        """Read data files (no download)."""
-        start, end = self._calculate_date_range(start_date, end_date, days)
-        data_dir = self._get_data_dir(symbol, data_type, market_type, futures_type)
-        
-        dfs = []
-        current = start
-        while current < end:
-            date_str = current.strftime("%Y-%m-%d")
-            filename = self._build_filename(symbol, data_type, date_str) + ".csv"
-            file_path = data_dir / filename
-            
-            if file_path.exists():
-                try:
-                    if data_type == "trades":
-                        df = self._read_trades_file(file_path, market_type, columns)
-                    elif data_type == "klines":
-                        df = self._read_klines_file(file_path, columns)
-                    else:
-                        df = self._read_agg_trades_file(file_path, columns)
-                    
-                    dfs.append(df)
-                except Exception as e:
-                    self.logger.error(f"Error reading file {filename}: {str(e)}")
-            else:
-                self.logger.warning(f"File missing: {file_path}")
-            
-            current += timedelta(days=1)
-        
-        if not dfs:
-            raise ValueError("No data files found for the specified date range")
-        
-        final_df = pd.concat(dfs, ignore_index=True)
-        final_df['symbol'] = symbol
-        
-        return final_df
-    
-    def _get_data_dir(
+    def _read_data_duckdb(
         self,
         symbol: str,
         data_type: str,
         market_type: str,
         futures_type: str,
-    ) -> Path:
-        """Build data directory path."""
-        if market_type == "futures":
-            return self.base_path / market_type / futures_type / data_type / symbol
-        return self.base_path / market_type / data_type / symbol
+        start_dt: datetime,
+        end_dt: datetime,
+        columns: Optional[List[str]] = None,
+    ) -> pd.DataFrame:
+        """Read Parquet files using DuckDB with Hive partitioning."""
+        market = get_market_string(market_type, futures_type)
+        
+        # Build glob pattern for Parquet files
+        base_pattern = (
+            self.base_path
+            / f"market={market}"
+            / f"data_type={data_type}"
+            / f"symbol={symbol}"
+            / "**/*.parquet"
+        )
+        
+        # Build column selection
+        col_str = ", ".join(columns) if columns else "*"
+        
+        # Build date filter conditions
+        # We need to filter by year, month, day partitions
+        date_conditions = self._build_date_filter(start_dt, end_dt)
+        
+        query = f"""
+            SELECT {col_str}
+            FROM read_parquet('{base_pattern}', hive_partitioning=true)
+            WHERE {date_conditions}
+            ORDER BY year, month, day
+        """
+        
+        try:
+            result = duckdb.query(query).df()
+            if result.empty:
+                raise ValueError(f"No data found for {symbol} between {start_dt.date()} and {end_dt.date()}")
+            return result
+        except Exception as e:
+            self.logger.error(f"Error querying data: {e}")
+            raise
     
-    def _build_filename(
-        self,
-        symbol: str,
-        data_type: str,
-        date_str: str,
-    ) -> str:
-        """Build base filename (without extension)."""
-        if data_type == "klines":
-            return f"{symbol}-1m-{date_str}"
-        return f"{symbol}-{data_type}-{date_str}"
+    def _build_date_filter(self, start_dt: datetime, end_dt: datetime) -> str:
+        """Build SQL WHERE clause for date filtering on Hive partitions."""
+        # Hive partitions are read as VARCHAR, so we need to cast them to INTEGER
+        # Use composite condition for efficient filtering
+        start_val = start_dt.year * 10000 + start_dt.month * 100 + start_dt.day
+        end_val = end_dt.year * 10000 + end_dt.month * 100 + end_dt.day
+        
+        return f"(CAST(year AS INTEGER) * 10000 + CAST(month AS INTEGER) * 100 + CAST(day AS INTEGER)) >= {start_val} AND (CAST(year AS INTEGER) * 10000 + CAST(month AS INTEGER) * 100 + CAST(day AS INTEGER)) < {end_val}"
     
     def _check_all_files_exist(
         self,
@@ -196,48 +183,23 @@ class BinanceDataLoader:
         data_type: str,
         market_type: str,
         futures_type: str,
-        start_date: Optional[str],
-        end_date: Optional[str],
-        days: Optional[int],
+        start_dt: datetime,
+        end_dt: datetime,
     ) -> bool:
-        """Check if all required CSV files exist."""
-        start, end = self._calculate_date_range(start_date, end_date, days)
-        data_dir = self._get_data_dir(symbol, data_type, market_type, futures_type)
-
-        current = start
-        while current < end:
-            date_str = current.strftime("%Y-%m-%d")
-            filename = self._build_filename(symbol, data_type, date_str) + ".csv"
-            file_path = data_dir / filename
-            if not file_path.exists():
+        """Check if all required Parquet files exist."""
+        market = get_market_string(market_type, futures_type)
+        
+        current = start_dt
+        while current < end_dt:
+            hive_path = build_hive_path(
+                self.base_path, market, data_type, symbol,
+                current.year, current.month, current.day
+            )
+            parquet_file = hive_path / "data.parquet"
+            if not parquet_file.exists():
                 return False
             current += timedelta(days=1)
         return True
-    
-    def _read_trades_file(self, file_path: Path, market_type: str, columns: Optional[List[str]] = None) -> pd.DataFrame:
-        """Read trades data file."""
-        if market_type == "spot":
-            df = pd.read_csv(file_path, names=["id", "price", "qty", "quote_qty", "time", "is_buyer_maker", "ignore"])
-            df = df.drop(columns=["ignore"])
-        else:
-            df = pd.read_csv(file_path)
-        if columns:
-            df = df[columns]
-        return df
-    
-    def _read_klines_file(self, file_path: Path, columns: Optional[List[str]] = None) -> pd.DataFrame:
-        """Read klines data file."""
-        df = pd.read_csv(file_path)
-        if columns:
-            df = df[columns]
-        return df
-    
-    def _read_agg_trades_file(self, file_path: Path, columns: Optional[List[str]] = None) -> pd.DataFrame:
-        """Read aggregated trades data file."""
-        df = pd.read_csv(file_path)
-        if columns:
-            df = df[columns]
-        return df
     
     def load_aggbar(
         self,
@@ -334,3 +296,4 @@ class BinanceDataLoader:
             start = end - timedelta(days=6)
             
         return start, end
+

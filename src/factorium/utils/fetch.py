@@ -15,6 +15,9 @@ from typing import Optional, Tuple, List
 import hashlib
 import zipfile
 import argparse
+import tempfile
+
+from .parquet import csv_to_parquet, build_hive_path, get_market_string
 
 
 class BinanceDataDownloader:
@@ -121,7 +124,7 @@ class BinanceDataDownloader:
         download_dir: Path,
         semaphore: asyncio.Semaphore
     ) -> None:
-        """Download single day data."""
+        """Download single day data and convert to Parquet with Hive partitioning."""
         async with semaphore:
             date_str = date.strftime("%Y-%m-%d")
             self.logger.info(f"Processing data for {date_str}")
@@ -132,16 +135,34 @@ class BinanceDataDownloader:
             
             for attempt in range(self.retry_attempts):
                 try:
-                    data_file_path = download_dir / filename
-                    if await self._download_file(session, f"{base_url}/{filename}", data_file_path):
-                        checksum_file_path = download_dir / checksum_filename
-                        if await self._download_file(session, f"{base_url}/{checksum_filename}", checksum_file_path):
-                            if await self._verify_checksum(data_file_path, checksum_file_path):
-                                await self._extract_zip(data_file_path)
-                                os.remove(data_file_path)
-                                os.remove(checksum_file_path)
-                                self.logger.info(f"✓ Successfully processed {filename}")
-                                return
+                    # Use temp directory for download
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_path = Path(temp_dir)
+                        data_file_path = temp_path / filename
+                        
+                        if await self._download_file(session, f"{base_url}/{filename}", data_file_path):
+                            checksum_file_path = temp_path / checksum_filename
+                            if await self._download_file(session, f"{base_url}/{checksum_filename}", checksum_file_path):
+                                if await self._verify_checksum(data_file_path, checksum_file_path):
+                                    # Extract ZIP to temp directory
+                                    await self._extract_zip(data_file_path)
+                                    
+                                    # Find extracted CSV file
+                                    csv_filename = filename.replace('.zip', '.csv')
+                                    csv_path = temp_path / csv_filename
+                                    
+                                    if csv_path.exists():
+                                        # Build Hive partition path and convert to Parquet
+                                        market = get_market_string(market_type, futures_type)
+                                        hive_path = build_hive_path(
+                                            self.base_path, market, data_type, symbol,
+                                            date.year, date.month, date.day
+                                        )
+                                        csv_to_parquet(csv_path, hive_path, data_type=data_type)
+                                        self.logger.info(f"✓ Successfully processed {filename} -> {hive_path}")
+                                        return
+                                    else:
+                                        self.logger.error(f"CSV file not found after extraction: {csv_path}")
                     
                     self.logger.warning(f"Attempt {attempt + 1} failed for {date_str}")
                     await asyncio.sleep(self.retry_delay)
@@ -238,14 +259,12 @@ class BinanceDataDownloader:
             raise
     
     def _setup_download_dir(self, symbol: str, data_type: str, market_type: str, futures_type: str = 'cm') -> Path:
-        """Setup download directory."""
-        if market_type == "futures":
-            download_dir = self.base_path / market_type / futures_type / data_type / symbol
-        else:
-            download_dir = self.base_path / market_type / data_type / symbol
-        
-        download_dir.mkdir(parents=True, exist_ok=True)
-        return download_dir
+        """Setup download directory (kept for backward compatibility, now uses temp dir)."""
+        # Note: With Hive partitioning, we use temp directories for download
+        # and build the final path using build_hive_path during conversion
+        temp_dir = self.base_path / ".temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
     
     def _generate_date_list(self, start_date: datetime, end_date: datetime) -> List[datetime]:
         """Generate list of dates."""
