@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from freezegun import freeze_time
 
 from factorium import BinanceDataLoader, AggBar
-from factorium.utils.parquet import build_hive_path
+from factorium.data import build_hive_path
 
 
 # =============================================================================

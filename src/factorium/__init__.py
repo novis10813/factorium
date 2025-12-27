@@ -27,7 +27,7 @@ from .factors.core import Factor
 from .factors.base import BaseFactor
 from .aggbar import AggBar
 from .bar import BaseBar, TimeBar, TickBar, VolumeBar, DollarBar
-from .data_loader import BinanceDataLoader
+from .data import BinanceDataLoader
 
 __version__ = "0.1.0"
 

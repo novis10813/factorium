@@ -13,10 +13,10 @@ from typing import Optional, List
 import duckdb
 import pandas as pd
 
-from .aggbar import AggBar
-from .bar import TimeBar
-from .utils.fetch import BinanceDataDownloader
-from .utils.parquet import get_market_string, build_hive_path
+from ..aggbar import AggBar
+from ..bar import TimeBar
+from .downloader import BinanceDataDownloader
+from .parquet import get_market_string, build_hive_path
 
 
 class BinanceDataLoader:
@@ -296,4 +296,3 @@ class BinanceDataLoader:
             start = end - timedelta(days=6)
             
         return start, end
-

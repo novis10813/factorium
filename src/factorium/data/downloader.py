@@ -344,13 +344,13 @@ def parse_args():
         epilog="""
 Examples:
   # Download 7 days of futures trades data (CM)
-  python -m factorium.utils.fetch -s BTCUSD_PERP -t trades -m futures -f cm -d 7
+  python -m factorium.data.downloader -s BTCUSD_PERP -t trades -m futures -f cm -d 7
   
   # Download specific date range of futures trades data (UM)
-  python -m factorium.utils.fetch -s BTCUSDT -t trades -m futures -f um -r 2024-01-01:2024-01-31
+  python -m factorium.data.downloader -s BTCUSDT -t trades -m futures -f um -r 2024-01-01:2024-01-31
   
   # Download spot market data
-  python -m factorium.utils.fetch -s BTCUSDT -t klines -m spot -r 2024-01-01:2024-01-31
+  python -m factorium.data.downloader -s BTCUSDT -t klines -m spot -r 2024-01-01:2024-01-31
         """
     )
     
