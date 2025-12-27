@@ -187,7 +187,7 @@ class BinanceDataLoader:
     ) -> str:
         """Build base filename (without extension)."""
         if data_type == "klines":
-            return f"{symbol}-{data_type}-1m-{date_str}"
+            return f"{symbol}-1m-{date_str}"
         return f"{symbol}-{data_type}-{date_str}"
     
     def _check_all_files_exist(

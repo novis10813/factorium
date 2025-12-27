@@ -259,7 +259,7 @@ class BinanceDataDownloader:
     def _build_filename(self, symbol: str, data_type: str, date_str: str) -> str:
         """Build filename."""
         if data_type == "klines":
-            return f"{symbol}-{data_type}-1m-{date_str}.zip"
+            return f"{symbol}-1m-{date_str}.zip"
         return f"{symbol}-{data_type}-{date_str}.zip"
     
     def _build_base_url(self, market_type: str, data_type: str, symbol: str, futures_type: str = 'cm') -> str:
@@ -268,7 +268,14 @@ class BinanceDataDownloader:
             market_path = f"futures/{futures_type}"
         else:
             market_path = "spot"
-        return f"https://data.binance.vision/data/{market_path}/daily/{data_type}/{symbol}"
+        
+        base_url = f"https://data.binance.vision/data/{market_path}/daily/{data_type}/{symbol}"
+        
+        # Klines have an additional interval subdirectory
+        if data_type == "klines":
+            base_url = f"{base_url}/1m"
+        
+        return base_url
     
     def _update_readme(self) -> None:
         """Update README file."""
