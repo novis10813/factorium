@@ -298,6 +298,8 @@ class TimeSeriesOpsMixin:
             if x[valid_mask].std() == 0 or y[valid_mask].std() == 0:
                 return pd.Series(np.nan, index=group.index)
 
+            # Rolling corr/cov returns a matrix for each window; extract the cross-correlation/covariance
+            # by selecting every other row (factor_x rows) and the second column (correlation with factor_y)
             corr_result = group[["factor_x", "factor_y"]].rolling(window, min_periods=window).corr().iloc[0::2, 1]
             corr_result.index = group.index
             return corr_result
@@ -327,6 +329,8 @@ class TimeSeriesOpsMixin:
             if valid_mask.sum() < 2:
                 return pd.Series(np.nan, index=group.index)
 
+            # Rolling corr/cov returns a matrix for each window; extract the cross-correlation/covariance
+            # by selecting every other row (factor_x rows) and the second column (correlation with factor_y)
             cov_result = group[["factor_x", "factor_y"]].rolling(window, min_periods=window).cov().iloc[0::2, 1]
             cov_result.index = group.index
             return cov_result

@@ -1,9 +1,12 @@
 import pandas as pd
 import numpy as np
+import logging
 from typing import Union, List, Optional
 from .core import Factor
 from ..aggbar import AggBar
 import matplotlib.figure as mpl_figure
+
+logger = logging.getLogger(__name__)
 
 
 class FactorAnalyzer:
@@ -34,6 +37,7 @@ class FactorAnalyzer:
         Returns:
             pd.DataFrame: Merged data with 'factor' and 'period_n' returns.
         """
+        original_count = len(self.factor.data)
         if self.factor.data.empty:
             raise ValueError("Factor data is empty.")
 
@@ -65,6 +69,9 @@ class FactorAnalyzer:
 
         # Drop any remaining NaNs to ensure strict data alignment
         self._clean_data = df.dropna()
+        final_count = len(self._clean_data)
+        retained_pct = (final_count / original_count * 100) if original_count > 0 else 0
+        logger.info(f"prepare_data: {original_count} rows -> {final_count} rows ({retained_pct:.1f}% retained)")
         return self._clean_data
 
     def calculate_ic(self, method: str = "rank") -> pd.DataFrame:
