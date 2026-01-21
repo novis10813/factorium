@@ -11,6 +11,7 @@ Exports:
 from .core import Factor
 from .base import BaseFactor
 from .parser import FactorExpressionParser
+from .analyzer import FactorAnalyzer
 
 # Import all operators
 from . import operators
@@ -19,5 +20,6 @@ __all__ = [
     "Factor",
     "BaseFactor",
     "FactorExpressionParser",
+    "FactorAnalyzer",
     "operators",
 ]
