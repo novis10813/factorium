@@ -75,3 +75,40 @@ def test_prepare_data_empty_factor():
     analyzer = FactorAnalyzer(factor, prices)
     with pytest.raises(ValueError, match="Factor data is empty."):
         analyzer.prepare_data()
+
+
+def test_calculate_ic(sample_data):
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    periods = [1, 2]
+    analyzer.prepare_data(periods=periods)
+
+    ic = analyzer.calculate_ic(method="rank")
+
+    assert isinstance(ic, pd.DataFrame)
+    for p in periods:
+        col = f"period_{p}"
+        assert col in ic.columns
+        # IC should be between -1 and 1
+        assert ic[col].min() >= -1.0
+        assert ic[col].max() <= 1.0
+
+
+def test_ic_summary(sample_data):
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    analyzer.prepare_data(periods=[1])
+
+    summary = analyzer.calculate_ic_summary()
+    assert isinstance(summary, pd.DataFrame)
+    assert "period_1" in summary.columns
+    assert "mean" in summary.index
+    assert "std" in summary.index
+    assert "t-stat" in summary.index
+    assert "ic_ir" in summary.index

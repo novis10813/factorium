@@ -63,4 +63,63 @@ class FactorAnalyzer:
             df = pd.merge(df, ret_data, on=["start_time", "end_time", "symbol"], how="inner")
 
         # Drop any remaining NaNs to ensure strict data alignment
-        return df.dropna()
+        self._clean_data = df.dropna()
+        return self._clean_data
+
+    def calculate_ic(self, method: str = "rank") -> pd.DataFrame:
+        """
+        Calculate Information Coefficient (IC) for each period.
+
+        Args:
+            method: 'rank' for Spearman rank correlation, 'normal' for Pearson correlation.
+
+        Returns:
+            pd.DataFrame: IC values indexed by start_time.
+        """
+        if not hasattr(self, "_clean_data"):
+            raise ValueError("Data not prepared. Call prepare_data() first.")
+
+        period_cols = [c for c in self._clean_data.columns if c.startswith("period_")]
+
+        def _group_ic(group):
+            if len(group) < 2:
+                return pd.Series({c: np.nan for c in period_cols}, dtype=float)
+
+            res = {}
+            corr_method = "spearman" if method == "rank" else "pearson"
+            for c in period_cols:
+                res[c] = group["factor"].corr(group[c], method=corr_method)
+            return pd.Series(res)
+
+        ic = self._clean_data.groupby("start_time").apply(_group_ic, include_groups=False)
+        return ic
+
+    def calculate_ic_summary(self, method: str = "rank") -> pd.DataFrame:
+        """
+        Calculate summary statistics for IC.
+
+        Returns:
+            pd.DataFrame: Summary statistics (mean, std, t-stat, ic_ir).
+        """
+        ic = self.calculate_ic(method=method)
+        summary = {}
+
+        for col in ic.columns:
+            vals = ic[col].dropna()
+            if vals.empty:
+                summary[col] = {"mean": np.nan, "std": np.nan, "t-stat": np.nan, "ic_ir": np.nan}
+                continue
+
+            mean = vals.mean()
+            std = vals.std()
+            t_stat = mean / (std / np.sqrt(len(vals))) if std > 0 else np.nan
+            ic_ir = mean / std if std > 0 else np.nan
+
+            summary[col] = {
+                "mean": mean,
+                "std": std,
+                "t-stat": t_stat,
+                "ic_ir": ic_ir,
+            }
+
+        return pd.DataFrame(summary)
