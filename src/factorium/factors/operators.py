@@ -13,19 +13,6 @@ if TYPE_CHECKING:
     from .core import Factor
 
 
-def _apply_binary_op(factor, other, op):
-    from .core import Factor
-
-    if isinstance(factor, Factor):
-        return op(factor, other)
-    elif isinstance(other, Factor):
-        # If left is scalar, we might need more logic depending on the op.
-        # For regression ops, usually the first arg is the dependent variable (Factor).
-        raise TypeError(f"The first argument must be a Factor, got {type(factor)}")
-    else:
-        raise TypeError("At least one argument must be a Factor")
-
-
 # ============================================================================
 # Time Series Operators
 # ============================================================================
@@ -123,17 +110,17 @@ def ts_delta(factor: "Factor", period: int) -> "Factor":
 
 def ts_beta(factor: "Factor", other: "Factor", window: int) -> "Factor":
     """Functional version of factor.ts_beta(other, window)"""
-    return _apply_binary_op(factor, other, lambda f, o: f.ts_beta(o, window=window))
+    return factor.ts_beta(other, window)
 
 
 def ts_alpha(factor: "Factor", other: "Factor", window: int) -> "Factor":
     """Functional version of factor.ts_alpha(other, window)"""
-    return _apply_binary_op(factor, other, lambda f, o: f.ts_alpha(o, window=window))
+    return factor.ts_alpha(other, window)
 
 
 def ts_resid(factor: "Factor", other: "Factor", window: int) -> "Factor":
     """Functional version of factor.ts_resid(other, window)"""
-    return _apply_binary_op(factor, other, lambda f, o: f.ts_resid(o, window=window))
+    return factor.ts_resid(other, window)
 
 
 def ts_corr(factor1: "Factor", factor2: "Factor", window: int) -> "Factor":
