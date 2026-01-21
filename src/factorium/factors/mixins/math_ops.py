@@ -1,6 +1,12 @@
 import pandas as pd
 import numpy as np
-from typing import Self, Optional, Union
+
+from typing import Optional, Union
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 
 class MathOpsMixin:
