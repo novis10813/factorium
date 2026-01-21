@@ -23,10 +23,11 @@ from tests.mixins.test_mathmixin import (
 # Helper Functions
 # ==========================================
 
+
 def assert_expression_equals_method_chain(expr: str, context: dict, method_chain_result: Factor):
     """
     Verify that expression parsing produces the same result as method chaining.
-    
+
     Args:
         expr: Expression string to parse
         context: Variable context for expression
@@ -34,7 +35,7 @@ def assert_expression_equals_method_chain(expr: str, context: dict, method_chain
     """
     # Backward path: parse expression
     parsed_result = Factor.from_expression(expr, context)
-    
+
     # Compare results
     assert_factor_equals_df(parsed_result, method_chain_result.data["factor"])
 
@@ -43,11 +44,12 @@ def assert_expression_equals_method_chain(expr: str, context: dict, method_chain
 # Test Cases: Time Series Operations
 # ==========================================
 
+
 def test_ts_delta_expression(factor_close):
     """Test ts_delta function in expression"""
     # Forward: method chaining
     forward_result = factor_close.ts_delta(5)
-    
+
     # Backward: expression
     expr = "ts_delta(close, 5)"
     assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
@@ -81,9 +83,34 @@ def test_ts_shift_expression(factor_close):
     assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
 
 
+def test_ts_beta_expression(factor_close, factor_open):
+    """Test ts_beta function in expression"""
+    # Forward: method chaining
+    forward_result = factor_close.ts_beta(factor_open, 20)
+
+    # Backward: expression
+    expr = "ts_beta(close, open, 20)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close, "open": factor_open}, forward_result)
+
+
+def test_ts_alpha_expression(factor_close, factor_open):
+    """Test ts_alpha function in expression"""
+    forward_result = factor_close.ts_alpha(factor_open, 20)
+    expr = "ts_alpha(close, open, 20)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close, "open": factor_open}, forward_result)
+
+
+def test_ts_resid_expression(factor_close, factor_open):
+    """Test ts_resid function in expression"""
+    forward_result = factor_close.ts_resid(factor_open, 20)
+    expr = "ts_resid(close, open, 20)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close, "open": factor_open}, forward_result)
+
+
 # ==========================================
 # Test Cases: Cross-Sectional Operations
 # ==========================================
+
 
 def test_rank_expression(factor_close):
     """Test rank function in expression"""
@@ -102,6 +129,7 @@ def test_mean_expression(factor_close):
 # ==========================================
 # Test Cases: Math Operations
 # ==========================================
+
 
 def test_abs_expression(factor_close):
     """Test abs function in expression"""
@@ -127,6 +155,7 @@ def test_sqrt_expression(factor_close):
 # ==========================================
 # Test Cases: Binary Operators
 # ==========================================
+
 
 def test_add_expression(factor_close, factor_open):
     """Test addition in expression"""
@@ -174,6 +203,7 @@ def test_mul_scalar_expression(factor_close):
 # Test Cases: Complex Expressions
 # ==========================================
 
+
 def test_momentum_expression(factor_close):
     """Test momentum calculation: ts_delta(close, 20) / ts_shift(close, 20)"""
     forward_result = factor_close.ts_delta(20) / factor_close.ts_shift(20)
@@ -219,6 +249,7 @@ def test_operator_precedence_with_division(factor_close, factor_open):
 # ==========================================
 # Test Cases: Expression Syntax (infix operators)
 # ==========================================
+
 
 def test_infix_add_expression(factor_close, factor_open):
     """Test infix addition: close + open"""
@@ -280,6 +311,7 @@ def test_infix_operator_precedence(factor_close, factor_open):
 # Test Cases: Error Handling
 # ==========================================
 
+
 def test_undefined_variable_error(factor_close):
     """Test that undefined variable raises error"""
     expr = "ts_delta(unknown_var, 20)"
@@ -305,6 +337,7 @@ def test_invalid_expression_syntax(factor_close):
 # Test Cases: Edge Cases
 # ==========================================
 
+
 def test_single_variable_expression(factor_close):
     """Test expression with just a variable"""
     forward_result = factor_close
@@ -324,4 +357,3 @@ def test_float_number_expression(factor_close):
     forward_result = factor_close * 3.14159
     expr = "mul(close, 3.14159)"
     assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
-
