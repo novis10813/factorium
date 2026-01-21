@@ -246,6 +246,19 @@ class TimeSeriesOpsMixin:
 
         return self.__class__(result.data, f"ts_beta({self.name},{other.name},{window})")
 
+    def ts_alpha(self, other: Self, window: int) -> Self:
+        """
+        Time-series Alpha from a simple linear regression.
+        Alpha = Mean(self) - Beta * Mean(other)
+        """
+        self._validate_window(window)
+        self._validate_factor(other, "ts_alpha")
+
+        beta = self.ts_beta(other, window)
+        alpha = self.ts_mean(window) - beta * other.ts_mean(window)
+
+        return self.__class__(alpha.data, f"ts_alpha({self.name},{other.name},{window})")
+
     def ts_corr(self, other: Self, window: int) -> Self:
         self._validate_window(window)
         self._validate_factor(other, "ts_corr")

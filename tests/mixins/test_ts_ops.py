@@ -378,3 +378,25 @@ def test_ts_beta_basic(factor_close: Factor):
 
     expected = pd.Series(out)
     assert_factor_equals_df(res, expected)
+
+
+def test_ts_alpha(ts_ops_mixin_factory):
+    # Setup y = x + 5
+    # Beta should be 1.0, Alpha should be 5.0
+    s1 = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0], index=pd.date_range("2020-01-01", periods=5))
+    s2 = pd.Series([6.0, 7.0, 8.0, 9.0, 10.0], index=pd.date_range("2020-01-01", periods=5))
+
+    f1 = ts_ops_mixin_factory(s1)  # X
+    f2 = ts_ops_mixin_factory(s2)  # Y
+
+    # Window=3
+    # Mean(X) for [1,2,3] is 2.0. Mean(Y) for [6,7,8] is 7.0.
+    # Beta = 1.0. Alpha = 7.0 - 1.0 * 2.0 = 5.0
+    result = f2.ts_alpha(f1, window=3)
+
+    # First 2 should be NaN due to window
+    assert np.isnan(result.data["factor"].iloc[0])
+    assert np.isnan(result.data["factor"].iloc[1])
+    assert np.isclose(result.data["factor"].iloc[2], 5.0)
+    assert np.isclose(result.data["factor"].iloc[3], 5.0)
+    assert np.isclose(result.data["factor"].iloc[4], 5.0)
