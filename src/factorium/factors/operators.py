@@ -12,9 +12,23 @@ if TYPE_CHECKING:
     from .core import Factor
 
 
+def _apply_binary_op(factor, other, op):
+    from .core import Factor
+
+    if isinstance(factor, Factor):
+        return op(factor, other)
+    elif isinstance(other, Factor):
+        # If left is scalar, we might need more logic depending on the op.
+        # For regression ops, usually the first arg is the dependent variable (Factor).
+        raise TypeError(f"The first argument must be a Factor, got {type(factor)}")
+    else:
+        raise TypeError("At least one argument must be a Factor")
+
+
 # ============================================================================
 # Time Series Operators
 # ============================================================================
+
 
 def ts_rank(factor: "Factor", window: int) -> "Factor":
     """Functional version of factor.ts_rank(window)"""
@@ -106,6 +120,11 @@ def ts_delta(factor: "Factor", period: int) -> "Factor":
     return factor.ts_delta(period)
 
 
+def ts_beta(factor: "Factor", other: "Factor", window: int) -> "Factor":
+    """Functional version of factor.ts_beta(other, window)"""
+    return _apply_binary_op(factor, other, lambda f, o: f.ts_beta(o, window=window))
+
+
 def ts_corr(factor1: "Factor", factor2: "Factor", window: int) -> "Factor":
     """Functional version of factor1.ts_corr(factor2, window)"""
     return factor1.ts_corr(factor2, window)
@@ -145,6 +164,7 @@ def ts_vr(factor: "Factor", window: int, k: int = 2) -> "Factor":
 # Cross-Sectional Operators
 # ============================================================================
 
+
 def rank(factor: "Factor") -> "Factor":
     """Functional version of factor.rank()"""
     return factor.rank()
@@ -163,6 +183,7 @@ def median(factor: "Factor") -> "Factor":
 # ============================================================================
 # Math Operators
 # ============================================================================
+
 
 def abs(factor: "Factor") -> "Factor":
     """Functional version of factor.abs()"""
@@ -212,6 +233,7 @@ def pow(factor: "Factor", exponent: Union["Factor", float]) -> "Factor":
 def where(factor: "Factor", cond: "Factor", other: Union["Factor", float] = None) -> "Factor":
     """Functional version of factor.where(cond, other)"""
     import numpy as np
+
     if other is None:
         other = np.nan
     return factor.where(cond, other)
@@ -236,6 +258,7 @@ def reverse(factor: "Factor") -> "Factor":
 # Binary Operators
 # ============================================================================
 
+
 def add(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
     """Functional version of factor1 + factor2"""
     if isinstance(factor1, float) or isinstance(factor1, int):
@@ -249,9 +272,10 @@ def sub(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Fa
     if isinstance(factor1, float) or isinstance(factor1, int):
         # Handle scalar on left side
         from .core import Factor
+
         if isinstance(factor2, Factor):
             result = factor2._data.copy()
-            result['factor'] = factor1 - result['factor']
+            result["factor"] = factor1 - result["factor"]
             return Factor(result, f"({factor1}-{factor2.name})")
         return factor1 - factor2
     return factor1 - factor2
@@ -269,14 +293,10 @@ def div(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Fa
     if isinstance(factor1, float) or isinstance(factor1, int):
         # Handle scalar on left side
         from .core import Factor
+
         if isinstance(factor2, Factor):
             result = factor2._data.copy()
-            result['factor'] = np.where(
-                result['factor'] != 0,
-                factor1 / result['factor'],
-                np.nan
-            )
+            result["factor"] = np.where(result["factor"] != 0, factor1 / result["factor"], np.nan)
             return Factor(result, f"({factor1}/{factor2.name})")
         return factor1 / factor2
     return factor1 / factor2
-

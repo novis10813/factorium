@@ -113,12 +113,8 @@ def emulate_ts_scale(factor: Factor, window: int, constant: float = 0.0) -> pd.S
     df = factor.data.copy()
     grouped = df.groupby("symbol")
 
-    mins = grouped["factor"].transform(
-        lambda s: s.rolling(window=window, min_periods=window).min()
-    )
-    maxs = grouped["factor"].transform(
-        lambda s: s.rolling(window=window, min_periods=window).max()
-    )
+    mins = grouped["factor"].transform(lambda s: s.rolling(window=window, min_periods=window).min())
+    maxs = grouped["factor"].transform(lambda s: s.rolling(window=window, min_periods=window).max())
 
     scaled = (df["factor"] - mins) / (maxs - mins)
     scaled = scaled.replace([np.inf, -np.inf], np.nan)
@@ -129,12 +125,8 @@ def emulate_ts_zscore(factor: Factor, window: int) -> pd.Series:
     df = factor.data.copy()
     grouped = df.groupby("symbol")
 
-    means = grouped["factor"].transform(
-        lambda s: s.rolling(window=window, min_periods=window).mean()
-    )
-    stds = grouped["factor"].transform(
-        lambda s: s.rolling(window=window, min_periods=window).std()
-    )
+    means = grouped["factor"].transform(lambda s: s.rolling(window=window, min_periods=window).mean())
+    stds = grouped["factor"].transform(lambda s: s.rolling(window=window, min_periods=window).std())
 
     z = (df["factor"] - means) / stds
     z = z.replace([np.inf, -np.inf], np.nan)
@@ -319,4 +311,70 @@ def test_ts_quantile_basic(factor_close: Factor, driver: str):
     clipped = ranked.clip(lower=epsilon, upper=1 - epsilon)
     expected = ppf_map[driver](clipped)
 
+    assert_factor_equals_df(res, expected)
+
+
+@pytest.fixture
+def ts_ops_mixin_factory():
+    def _factory(series: pd.Series, symbol: str = "BTCUSDT"):
+        # Ensure index is datetime for view(np.int64)
+        if not isinstance(series.index, pd.DatetimeIndex):
+            series.index = pd.to_datetime(series.index)
+
+        df = pd.DataFrame(
+            {
+                "start_time": series.index.view(np.int64) // 10**6,
+                "end_time": (series.index.view(np.int64) // 10**6) + 60000,
+                "symbol": symbol,
+                "factor": series.values,
+            }
+        )
+        return Factor(df)
+
+    return _factory
+
+
+# ==========================================
+# Bivariate Tests
+# ==========================================
+
+
+def test_ts_beta(ts_ops_mixin_factory):
+    # Setup perfect correlation y = 2x
+    # Beta should be 2.0
+    s1 = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0], index=pd.date_range("2020-01-01", periods=5))
+    s2 = pd.Series([2.0, 4.0, 6.0, 8.0, 10.0], index=pd.date_range("2020-01-01", periods=5))
+
+    f1 = ts_ops_mixin_factory(s1)  # X
+    f2 = ts_ops_mixin_factory(s2)  # Y
+
+    # Window=3
+    # Var(X) for [1,2,3] is 1.0. Cov(X,Y) is 2.0. Beta = 2.0/1.0 = 2.0
+    result = f2.ts_beta(f1, window=3)
+
+    # First 2 should be NaN due to window
+    assert np.isnan(result.data["factor"].iloc[0])
+    assert np.isnan(result.data["factor"].iloc[1])
+    assert np.isclose(result.data["factor"].iloc[2], 2.0)
+    assert np.isclose(result.data["factor"].iloc[3], 2.0)
+    assert np.isclose(result.data["factor"].iloc[4], 2.0)
+
+
+def test_ts_beta_basic(factor_close: Factor):
+    window = 5
+    # y = 2 * x
+    factor_x = factor_close
+    factor_y = factor_close * 2.0
+
+    # ts_beta(y, x, window) = Cov(y, x) / Var(x) = 2.0
+    res = factor_y.ts_beta(factor_x, window)
+
+    df = factor_close.data.copy()
+    out = np.full(len(df), np.nan)
+    for _, group_idx in df.groupby("symbol").groups.items():
+        idx_arr = np.array(list(group_idx))
+        if len(idx_arr) >= window:
+            out[idx_arr[window - 1 :]] = 2.0
+
+    expected = pd.Series(out)
     assert_factor_equals_df(res, expected)
