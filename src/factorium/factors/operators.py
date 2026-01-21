@@ -5,7 +5,7 @@ This module provides functional-style wrappers for all Factor operations,
 enabling expression-based factor construction similar to alpha101.
 """
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union, List
 
 import numpy as np
 
@@ -161,6 +161,31 @@ def ts_vr(factor: "Factor", window: int, k: int = 2) -> "Factor":
 # ============================================================================
 # Cross-Sectional Operators
 # ============================================================================
+
+
+def cs_rank(factor: "Factor") -> "Factor":
+    """Functional version of factor.cs_rank()"""
+    return factor.cs_rank()
+
+
+def cs_zscore(factor: "Factor") -> "Factor":
+    """Functional version of factor.cs_zscore()"""
+    return factor.cs_zscore()
+
+
+def cs_demean(factor: "Factor") -> "Factor":
+    """Functional version of factor.cs_demean()"""
+    return factor.cs_demean()
+
+
+def cs_winsorize(factor: "Factor", limits: Union[float, List[float]] = 0.025) -> "Factor":
+    """Functional version of factor.cs_winsorize(limits)"""
+    return factor.cs_winsorize(limits)
+
+
+def cs_neutralize(factor: "Factor", other: "Factor") -> "Factor":
+    """Functional version of factor.cs_neutralize(other)"""
+    return factor.cs_neutralize(other)
 
 
 def rank(factor: "Factor") -> "Factor":
