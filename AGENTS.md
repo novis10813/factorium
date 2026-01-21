@@ -1,5 +1,19 @@
 # 程式碼庫慣例與模式
 
+## 專案概述
+
+Factorium 是一個量化因子分析與回測框架，主要模組：
+
+| 模組 | 說明 |
+|------|------|
+| `factors/` | 因子核心（運算子、解析器、分析器） |
+| `data/` | 資料下載與載入 |
+| `backtest/` | 回測引擎 |
+| `bar.py` | Bar 聚合（Time/Tick/Volume/Dollar） |
+| `aggbar.py` | 多標的資料容器 |
+
+---
+
 ## `safe_` 函數模式
 
 在此專案中，以 `safe_` 開頭的函數（例如：`safe_mean`, `safe_sum`, `safe_div`）旨在確保計算的「嚴格性」與「安全性」，這對於金融因子的計算尤為重要。
@@ -19,4 +33,48 @@
 def safe_mean(x: pd.Series) -> float:
     # 如果有任何值為 NaN 或長度不足，則回傳 NaN
     return np.nan if (x.isna().any() or len(x) < window) else x.mean()
+```
+
+---
+
+## Backtest 模組常數
+
+| 常數 | 值 | 用途 |
+|------|-----|------|
+| `POSITION_EPSILON` | `1e-10` | 判斷持倉變動是否有意義的閾值 |
+| `MIN_PERIODS_PER_YEAR` | `1.0` | `periods_per_year` 最小值 |
+| `MAX_PERIODS_PER_YEAR` | `~525960` | `periods_per_year` 最大值（分鐘級） |
+
+---
+
+## 文檔結構
+
+文檔使用 MkDocs + Material 主題，結構如下：
+
+```
+docs/
+├── index.md                    # 首頁
+├── getting-started/            # 快速開始
+│   ├── installation.md
+│   ├── quickstart.md
+│   └── data-acquisition.md
+├── user-guide/                 # 使用指南
+│   ├── bar.md
+│   ├── factor.md
+│   ├── parser.md
+│   ├── analyzer.md
+│   └── backtest.md
+└── dev/                        # 開發者文檔
+    ├── testing.md
+    └── regression-operators.md
+```
+
+### 本地預覽
+```bash
+uv run mkdocs serve
+```
+
+### 部署到 GitHub Pages
+```bash
+uv run mkdocs gh-deploy
 ```
