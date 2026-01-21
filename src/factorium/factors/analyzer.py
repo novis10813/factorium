@@ -187,9 +187,14 @@ class FactorAnalyzer:
         cum_ret = (1 + q_ret_pivot).cumprod() - 1
         return cum_ret
 
-    def plot_ic(self, period: int = 1, method: str = "rank") -> mpl_figure.Figure:
+    def plot_ic(self, period: int = 1, method: str = "rank", plot_type: str = "ts") -> mpl_figure.Figure:
         """
-        Plot Information Coefficient (IC) time series for a specific period.
+        Plot Information Coefficient (IC).
+
+        Args:
+            period: The return period to use.
+            method: 'rank' or 'normal'.
+            plot_type: 'ts' for time series, 'hist' for histogram.
         """
         from .plotting_analyzer import FactorAnalyzerPlotter
 
@@ -197,8 +202,14 @@ class FactorAnalyzer:
         col = f"period_{period}"
         if col not in ic.columns:
             raise ValueError(f"Period {period} not found in IC data.")
+
         plotter = FactorAnalyzerPlotter()
-        return plotter.plot_ic_ts(ic[[col]])
+        if plot_type == "ts":
+            return plotter.plot_ic_ts(ic[[col]])
+        elif plot_type == "hist":
+            return plotter.plot_ic_hist(ic[[col]])
+        else:
+            raise ValueError(f"Invalid plot_type: {plot_type}. Expected 'ts' or 'hist'.")
 
     def plot_quantile_returns(self, quantiles: int = 5, period: int = 1) -> mpl_figure.Figure:
         """

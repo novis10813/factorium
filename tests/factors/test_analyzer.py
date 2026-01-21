@@ -159,9 +159,17 @@ def test_plotting(sample_data):
     analyzer = FactorAnalyzer(factor, prices)
     analyzer.prepare_data(periods=[1, 5])
 
-    # Test plot_ic
-    fig_ic = analyzer.plot_ic(period=1)
-    assert isinstance(fig_ic, mpl_figure.Figure)
+    # Test plot_ic time series
+    fig_ic_ts = analyzer.plot_ic(period=1, plot_type="ts")
+    assert isinstance(fig_ic_ts, mpl_figure.Figure)
+
+    # Test plot_ic histogram
+    fig_ic_hist = analyzer.plot_ic(period=1, plot_type="hist")
+    assert isinstance(fig_ic_hist, mpl_figure.Figure)
+
+    # Test invalid plot_type
+    with pytest.raises(ValueError, match="Invalid plot_type"):
+        analyzer.plot_ic(period=1, plot_type="invalid")
 
     # Test plot_quantile_returns
     fig_q = analyzer.plot_quantile_returns(quantiles=2, period=1)
