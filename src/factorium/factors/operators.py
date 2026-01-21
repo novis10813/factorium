@@ -5,7 +5,8 @@ This module provides functional-style wrappers for all Factor operations,
 enabling expression-based factor construction similar to alpha101.
 """
 
-from typing import Union, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
+
 import numpy as np
 
 if TYPE_CHECKING:
@@ -210,7 +211,7 @@ def inverse(factor: "Factor") -> "Factor":
     return factor.inverse()
 
 
-def log(factor: "Factor", base: Optional[float] = None) -> "Factor":
+def log(factor: "Factor", base: float | None = None) -> "Factor":
     """Functional version of factor.log(base)"""
     return factor.log(base)
 
@@ -242,8 +243,6 @@ def pow(factor: "Factor", exponent: Union["Factor", float]) -> "Factor":
 
 def where(factor: "Factor", cond: "Factor", other: Union["Factor", float] = None) -> "Factor":
     """Functional version of factor.where(cond, other)"""
-    import numpy as np
-
     if other is None:
         other = np.nan
     return factor.where(cond, other)

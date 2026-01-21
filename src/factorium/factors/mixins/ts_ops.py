@@ -1,7 +1,8 @@
-import pandas as pd
-import numpy as np
 from typing import Self
-from scipy.stats import norm, uniform, cauchy
+
+import numpy as np
+import pandas as pd
+from scipy.stats import cauchy, norm, uniform
 
 
 class TimeSeriesOpsMixin:
@@ -281,7 +282,7 @@ class TimeSeriesOpsMixin:
         merged = pd.merge(self._data, other.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
 
         if merged.empty:
-            raise ValueError(f"No common data between factors")
+            raise ValueError("No common data between factors")
 
         def safe_corr(group):
             x = group["factor_x"]
@@ -313,7 +314,7 @@ class TimeSeriesOpsMixin:
         merged = pd.merge(self.data, other.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
 
         if merged.empty:
-            raise ValueError(f"No common data between factors")
+            raise ValueError("No common data between factors")
 
         def safe_cov(group):
             x = group["factor_x"]
@@ -380,7 +381,7 @@ class TimeSeriesOpsMixin:
     def ts_autocorr(self, window: int, lag: int = 1) -> Self:
         self._validate_window(window)
         if lag <= 0:
-            raise ValueError(f"Lag must be positive")
+            raise ValueError("Lag must be positive")
 
         lagged_factor = self.ts_shift(lag)
         result = self.ts_corr(lagged_factor, window)

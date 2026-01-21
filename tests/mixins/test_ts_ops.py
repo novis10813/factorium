@@ -1,15 +1,9 @@
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
-from factorium import Factor, AggBar
-
-from tests.mixins.test_mathmixin import (
-    sample_aggbar,  # noqa: F401
-    factor_close,  # noqa: F401
-    factor_open,  # noqa: F401
-    assert_factor_equals_df,
-)
+from factorium import AggBar, Factor
+from tests.mixins.test_mathmixin import assert_factor_equals_df
 
 
 # ==========================================
