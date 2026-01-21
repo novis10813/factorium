@@ -112,3 +112,38 @@ def test_ic_summary(sample_data):
     assert "std" in summary.index
     assert "t-stat" in summary.index
     assert "ic_ir" in summary.index
+
+
+def test_calculate_quantile_returns(sample_data):
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    analyzer.prepare_data(periods=[1])
+
+    q_ret = analyzer.calculate_quantile_returns(quantiles=2, period=1)
+
+    assert isinstance(q_ret, pd.DataFrame)
+    assert "mean_ret" in q_ret.columns
+    assert "count" in q_ret.columns
+    # Check if we have 2 quantiles (if data allows)
+    assert q_ret.index.get_level_values("quantile").nunique() <= 2
+
+
+def test_calculate_cumulative_returns(sample_data):
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    analyzer.prepare_data(periods=[1])
+
+    cum_ret = analyzer.calculate_cumulative_returns(quantiles=2, period=1, long_short=True)
+
+    assert isinstance(cum_ret, pd.DataFrame)
+    if not cum_ret.empty:
+        # Check for quantile columns and Long-Short
+        assert "Long-Short" in cum_ret.columns
+        assert 1 in cum_ret.columns
+        assert 2 in cum_ret.columns

@@ -123,3 +123,65 @@ class FactorAnalyzer:
             }
 
         return pd.DataFrame(summary)
+
+    def calculate_quantile_returns(self, quantiles: int = 5, period: int = 1) -> pd.DataFrame:
+        """
+        Calculate mean returns for each factor quantile.
+
+        Args:
+            quantiles: Number of quantiles to split the factor into.
+            period: The return period to use.
+
+        Returns:
+            pd.DataFrame: Mean returns and counts per (start_time, quantile).
+        """
+        if not hasattr(self, "_clean_data"):
+            raise ValueError("Data not prepared. Call prepare_data() first.")
+
+        col = f"period_{period}"
+        if col not in self._clean_data.columns:
+            raise ValueError(f"Return for period {period} not found in prepared data.")
+
+        df = self._clean_data.copy()
+
+        def assign_quantiles(x):
+            try:
+                return pd.qcut(x, quantiles, labels=False) + 1
+            except ValueError:
+                return pd.Series([np.nan] * len(x), index=x.index)
+
+        df["quantile"] = df.groupby("start_time", group_keys=False)["factor"].apply(assign_quantiles)
+        df = df.dropna(subset=["quantile"])
+
+        # Group by time and quantile
+        q_ret = df.groupby(["start_time", "quantile"])[col].agg(["mean", "count"]).rename(columns={"mean": "mean_ret"})
+        return q_ret
+
+    def calculate_cumulative_returns(
+        self, quantiles: int = 5, period: int = 1, long_short: bool = True
+    ) -> pd.DataFrame:
+        """
+        Calculate cumulative returns for each factor quantile.
+
+        Args:
+            quantiles: Number of quantiles.
+            period: The return period to use.
+            long_short: Whether to include a Long-Short (Top - Bottom) portfolio.
+
+        Returns:
+            pd.DataFrame: Cumulative returns indexed by start_time.
+        """
+        q_ret = self.calculate_quantile_returns(quantiles=quantiles, period=period)
+
+        # Pivot to have quantiles as columns
+        q_ret_pivot = q_ret["mean_ret"].unstack("quantile")
+
+        if long_short and not q_ret_pivot.empty:
+            top_q = q_ret_pivot.columns.max()
+            bottom_q = q_ret_pivot.columns.min()
+            if top_q != bottom_q:
+                q_ret_pivot["Long-Short"] = q_ret_pivot[top_q] - q_ret_pivot[bottom_q]
+
+        # Cumulative returns: (1 + r).cumprod() - 1
+        cum_ret = (1 + q_ret_pivot).cumprod() - 1
+        return cum_ret
