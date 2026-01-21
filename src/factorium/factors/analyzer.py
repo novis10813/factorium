@@ -3,6 +3,7 @@ import numpy as np
 from typing import Union, List, Optional
 from .core import Factor
 from ..aggbar import AggBar
+import matplotlib.figure as mpl_figure
 
 
 class FactorAnalyzer:
@@ -185,3 +186,38 @@ class FactorAnalyzer:
         # Cumulative returns: (1 + r).cumprod() - 1
         cum_ret = (1 + q_ret_pivot).cumprod() - 1
         return cum_ret
+
+    def plot_ic(self, period: int = 1, method: str = "rank") -> mpl_figure.Figure:
+        """
+        Plot Information Coefficient (IC) time series for a specific period.
+        """
+        from .plotting_analyzer import FactorAnalyzerPlotter
+
+        ic = self.calculate_ic(method=method)
+        col = f"period_{period}"
+        if col not in ic.columns:
+            raise ValueError(f"Period {period} not found in IC data.")
+        plotter = FactorAnalyzerPlotter()
+        return plotter.plot_ic_ts(ic[[col]])
+
+    def plot_quantile_returns(self, quantiles: int = 5, period: int = 1) -> mpl_figure.Figure:
+        """
+        Plot mean returns for each factor quantile.
+        """
+        from .plotting_analyzer import FactorAnalyzerPlotter
+
+        q_ret = self.calculate_quantile_returns(quantiles=quantiles, period=period)
+        plotter = FactorAnalyzerPlotter()
+        return plotter.plot_quantile_returns(q_ret)
+
+    def plot_cumulative_returns(
+        self, quantiles: int = 5, period: int = 1, long_short: bool = True
+    ) -> mpl_figure.Figure:
+        """
+        Plot cumulative returns for each factor quantile.
+        """
+        from .plotting_analyzer import FactorAnalyzerPlotter
+
+        cum_ret = self.calculate_cumulative_returns(quantiles=quantiles, period=period, long_short=long_short)
+        plotter = FactorAnalyzerPlotter()
+        return plotter.plot_cumulative_returns(cum_ret)

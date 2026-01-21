@@ -147,3 +147,26 @@ def test_calculate_cumulative_returns(sample_data):
         assert "Long-Short" in cum_ret.columns
         assert 1 in cum_ret.columns
         assert 2 in cum_ret.columns
+
+
+def test_plotting(sample_data):
+    import matplotlib.figure as mpl_figure
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    analyzer.prepare_data(periods=[1, 5])
+
+    # Test plot_ic
+    fig_ic = analyzer.plot_ic(period=1)
+    assert isinstance(fig_ic, mpl_figure.Figure)
+
+    # Test plot_quantile_returns
+    fig_q = analyzer.plot_quantile_returns(quantiles=2, period=1)
+    assert isinstance(fig_q, mpl_figure.Figure)
+
+    # Test plot_cumulative_returns
+    fig_cum = analyzer.plot_cumulative_returns(quantiles=2, period=1)
+    assert isinstance(fig_cum, mpl_figure.Figure)
