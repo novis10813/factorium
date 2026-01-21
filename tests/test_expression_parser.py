@@ -126,6 +126,41 @@ def test_mean_expression(factor_close):
     assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
 
 
+def test_cs_rank_expression(factor_close):
+    """Test cs_rank function in expression"""
+    forward_result = factor_close.cs_rank()
+    expr = "cs_rank(close)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
+
+
+def test_cs_zscore_expression(factor_close):
+    """Test cs_zscore function in expression"""
+    forward_result = factor_close.cs_zscore()
+    expr = "cs_zscore(close)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
+
+
+def test_cs_demean_expression(factor_close):
+    """Test cs_demean function in expression"""
+    forward_result = factor_close.cs_demean()
+    expr = "cs_demean(close)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
+
+
+def test_cs_winsorize_expression(factor_close):
+    """Test cs_winsorize function in expression"""
+    forward_result = factor_close.cs_winsorize(0.05)
+    expr = "cs_winsorize(close, 0.05)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close}, forward_result)
+
+
+def test_cs_neutralize_expression(factor_close, factor_open):
+    """Test cs_neutralize function in expression"""
+    forward_result = factor_close.cs_neutralize(factor_open)
+    expr = "cs_neutralize(close, open)"
+    assert_expression_equals_method_chain(expr, {"close": factor_close, "open": factor_open}, forward_result)
+
+
 # ==========================================
 # Test Cases: Math Operations
 # ==========================================
