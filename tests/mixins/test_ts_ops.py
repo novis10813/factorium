@@ -400,3 +400,39 @@ def test_ts_alpha(ts_ops_mixin_factory):
     assert np.isclose(result.data["factor"].iloc[2], 5.0)
     assert np.isclose(result.data["factor"].iloc[3], 5.0)
     assert np.isclose(result.data["factor"].iloc[4], 5.0)
+
+
+def test_ts_alpha_nan_handling(ts_ops_mixin_factory):
+    # Setup y = x + 5 with a NaN in the middle
+    # window = 3
+    s1 = pd.Series([1.0, 2.0, np.nan, 4.0, 5.0], index=pd.date_range("2020-01-01", periods=5))
+    s2 = pd.Series([6.0, 7.0, 8.0, 9.0, 10.0], index=pd.date_range("2020-01-01", periods=5))
+
+    f1 = ts_ops_mixin_factory(s1)  # X
+    f2 = ts_ops_mixin_factory(s2)  # Y
+
+    result = f2.ts_alpha(f1, window=3)
+
+    # All should be NaN because:
+    # t=0,1: window not full
+    # t=2: [1,2,nan]
+    # t=3: [2,nan,4]
+    # t=4: [nan,4,5]
+    assert result.data["factor"].isna().all()
+
+    # Case where NaN is at the beginning, so some windows become valid
+    s1 = pd.Series([np.nan, 2.0, 3.0, 4.0, 5.0], index=pd.date_range("2020-01-01", periods=5))
+    s2 = pd.Series([6.0, 7.0, 8.0, 9.0, 10.0], index=pd.date_range("2020-01-01", periods=5))
+    f1 = ts_ops_mixin_factory(s1)
+    f2 = ts_ops_mixin_factory(s2)
+    result = f2.ts_alpha(f1, window=3)
+
+    # t=0,1: window not full
+    # t=2: [nan,2,3] -> NaN
+    # t=3: [2,3,4] -> OK
+    # t=4: [3,4,5] -> OK
+    assert np.isnan(result.data["factor"].iloc[0])
+    assert np.isnan(result.data["factor"].iloc[1])
+    assert np.isnan(result.data["factor"].iloc[2])
+    assert not np.isnan(result.data["factor"].iloc[3])
+    assert not np.isnan(result.data["factor"].iloc[4])
