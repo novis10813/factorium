@@ -11,12 +11,7 @@ import numpy as np
 from factorium import Factor, AggBar
 from factorium.factors.parser import FactorExpressionParser
 
-from tests.mixins.test_mathmixin import (
-    sample_aggbar,  # noqa: F401
-    factor_close,  # noqa: F401
-    factor_open,  # noqa: F401
-    assert_factor_equals_df,
-)
+from tests.mixins.test_mathmixin import assert_factor_equals_df
 
 
 # ==========================================
