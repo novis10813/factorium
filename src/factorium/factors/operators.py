@@ -282,42 +282,19 @@ def reverse(factor: "Factor") -> "Factor":
 
 def add(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
     """Functional version of factor1 + factor2"""
-    if isinstance(factor1, float) or isinstance(factor1, int):
-        # Handle scalar on left side
-        return factor2 + factor1
     return factor1 + factor2
 
 
 def sub(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
     """Functional version of factor1 - factor2"""
-    if isinstance(factor1, float) or isinstance(factor1, int):
-        # Handle scalar on left side
-        from .core import Factor
-
-        if isinstance(factor2, Factor):
-            result = factor2._data.copy()
-            result["factor"] = factor1 - result["factor"]
-            return Factor(result, f"({factor1}-{factor2.name})")
-        return factor1 - factor2
     return factor1 - factor2
 
 
 def mul(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
     """Functional version of factor1 * factor2"""
-    if isinstance(factor1, float) or isinstance(factor1, int):
-        return factor2 * factor1
     return factor1 * factor2
 
 
 def div(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
     """Functional version of factor1 / factor2"""
-    if isinstance(factor1, float) or isinstance(factor1, int):
-        # Handle scalar on left side
-        from .core import Factor
-
-        if isinstance(factor2, Factor):
-            result = factor2._data.copy()
-            result["factor"] = np.where(result["factor"] != 0, factor1 / result["factor"], np.nan)
-            return Factor(result, f"({factor1}/{factor2.name})")
-        return factor1 / factor2
     return factor1 / factor2

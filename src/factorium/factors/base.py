@@ -168,6 +168,20 @@ class BaseFactor(ABC):
             result["factor"] = np.where(result["factor"] != 0, other / result["factor"], np.nan)
             return self.__class__(result, f"({other}/{self.name})")
 
+    def __radd__(self, other: Union["BaseFactor", float]) -> Self:
+        return self.__add__(other)
+
+    def __rsub__(self, other: Union["BaseFactor", float]) -> Self:
+        if isinstance(other, self.__class__):
+            return other.__sub__(self)
+        else:
+            result = self._data.copy()
+            result["factor"] = other - result["factor"]
+            return self.__class__(result, f"({other}-{self.name})")
+
+    def __rmul__(self, other: Union["BaseFactor", float]) -> Self:
+        return self.__mul__(other)
+
     def __lt__(self, other: Union["BaseFactor", float]) -> Self:
         return self._comparison_op(other, lambda x, y: x < y, "<")
 

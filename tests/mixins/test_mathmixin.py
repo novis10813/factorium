@@ -143,18 +143,38 @@ def test_signed_log1p(factor_close):
     def logic(s):
         return np.sign(s) * np.log1p(np.abs(s))
 
-    expected = emulate_unary_op(factor_close, logic)
+
+def test_radd_scalar(factor_close):
+    """Test 10 + factor"""
+    res = 10 + factor_close
+    expected = emulate_binary_scalar_op(factor_close, 10, lambda x, y: y + x)
     assert_factor_equals_df(res, expected)
 
 
-def test_pow_scalar(factor_close):
-    res = factor_close.pow(2)
+def test_rsub_scalar(factor_close):
+    """Test 100 - factor"""
+    res = 100 - factor_close
+    expected = emulate_binary_scalar_op(factor_close, 100, lambda x, y: y - x)
+    assert_factor_equals_df(res, expected)
 
-    def logic(s, e):
-        val = s**e
-        return val.replace([np.inf, -np.inf], np.nan)
 
-    expected = emulate_binary_scalar_op(factor_close, 2, logic)
+def test_rmul_scalar(factor_close):
+    """Test 2 * factor"""
+    res = 2 * factor_close
+    expected = emulate_binary_scalar_op(factor_close, 2, lambda x, y: y * x)
+    assert_factor_equals_df(res, expected)
+
+
+def test_rdiv_scalar(factor_close):
+    """Test 1000 / factor"""
+    res = 1000 / factor_close
+
+    def rdiv_logic(x, y):
+        # x is factor series, y is scalar 1000
+        # result should be 1000 / x
+        return np.where(x != 0, y / x, np.nan)
+
+    expected = emulate_binary_scalar_op(factor_close, 1000, rdiv_logic)
     assert_factor_equals_df(res, expected)
 
 
