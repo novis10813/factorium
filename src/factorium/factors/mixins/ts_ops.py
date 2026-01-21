@@ -259,6 +259,21 @@ class TimeSeriesOpsMixin:
 
         return self.__class__(alpha.data, f"ts_alpha({self.name},{other.name},{window})")
 
+    def ts_resid(self, other: Self, window: int) -> Self:
+        """
+        Time-series Residual from a simple linear regression.
+        Formula: self - (alpha + beta * other)
+        """
+        self._validate_window(window)
+        self._validate_factor(other, "ts_resid")
+
+        alpha = self.ts_alpha(other, window)
+        beta = self.ts_beta(other, window)
+
+        result = self - (alpha + beta * other)
+
+        return self.__class__(result.data, f"ts_resid({self.name},{other.name},{window})")
+
     def ts_corr(self, other: Self, window: int) -> Self:
         self._validate_window(window)
         self._validate_factor(other, "ts_corr")

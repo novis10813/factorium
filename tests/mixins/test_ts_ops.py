@@ -436,3 +436,22 @@ def test_ts_alpha_nan_handling(ts_ops_mixin_factory):
     assert np.isnan(result.data["factor"].iloc[2])
     assert not np.isnan(result.data["factor"].iloc[3])
     assert not np.isnan(result.data["factor"].iloc[4])
+
+
+def test_ts_resid(ts_ops_mixin_factory):
+    # Setup y = 2x + 3
+    # Beta = 2.0, Alpha = 3.0
+    # Resid = y - (alpha + beta * x) = (2x + 3) - (3 + 2 * x) = 0
+    s1 = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0], index=pd.date_range("2020-01-01", periods=5))
+    s2 = pd.Series([5.0, 7.0, 9.0, 11.0, 13.0], index=pd.date_range("2020-01-01", periods=5))
+
+    f1 = ts_ops_mixin_factory(s1)  # X
+    f2 = ts_ops_mixin_factory(s2)  # Y
+
+    result = f2.ts_resid(f1, window=3)
+
+    # First 2 should be NaN due to window
+    assert np.isnan(result.data["factor"].iloc[0])
+    assert np.isnan(result.data["factor"].iloc[1])
+    # Resid should be 0.0
+    assert np.allclose(result.data["factor"].iloc[2:], 0.0, atol=1e-10)

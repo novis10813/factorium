@@ -130,6 +130,11 @@ def ts_alpha(factor: "Factor", other: "Factor", window: int) -> "Factor":
     return _apply_binary_op(factor, other, lambda f, o: f.ts_alpha(o, window=window))
 
 
+def ts_resid(factor: "Factor", other: "Factor", window: int) -> "Factor":
+    """Functional version of factor.ts_resid(other, window)"""
+    return _apply_binary_op(factor, other, lambda f, o: f.ts_resid(o, window=window))
+
+
 def ts_corr(factor1: "Factor", factor2: "Factor", window: int) -> "Factor":
     """Functional version of factor1.ts_corr(factor2, window)"""
     return factor1.ts_corr(factor2, window)
