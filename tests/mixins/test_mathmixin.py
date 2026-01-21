@@ -74,7 +74,8 @@ def test_log(factor_close):
     res = factor_close.log()
 
     def log_logic(s):
-        return np.where(s > 0, np.log(s), np.nan)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(s > 0, np.log(s), np.nan)
 
     expected = emulate_unary_op(factor_close, log_logic)
     assert_factor_equals_df(res, expected)
@@ -84,7 +85,8 @@ def test_sqrt(factor_close):
     res = factor_close.sqrt()
 
     def sqrt_logic(s):
-        return np.where(s > 0, np.sqrt(s), np.nan)
+        with np.errstate(invalid="ignore"):
+            return np.where(s > 0, np.sqrt(s), np.nan)
 
     expected = emulate_unary_op(factor_close, sqrt_logic)
     assert_factor_equals_df(res, expected)

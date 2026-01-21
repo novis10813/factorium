@@ -48,7 +48,8 @@ class MathOpsMixin:
 
     def sqrt(self) -> Self:
         result = self._data.copy()
-        result["factor"] = np.where(result["factor"] > 0, np.sqrt(result["factor"]), np.nan)
+        with np.errstate(invalid="ignore"):
+            result["factor"] = np.where(result["factor"] > 0, np.sqrt(result["factor"]), np.nan)
         return self.__class__(result, f"sqrt({self.name})")
 
     def signed_log1p(self) -> Self:
