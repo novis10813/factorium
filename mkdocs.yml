@@ -1,0 +1,63 @@
+site_name: Factorium
+site_description: 量化因子分析與回測框架
+site_url: https://novis.github.io/factorium/
+repo_url: https://github.com/novis/factorium
+repo_name: novis/factorium
+
+theme:
+  name: material
+  language: zh-TW
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切換至深色模式
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切換至淺色模式
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - 首頁: index.md
+  - 快速開始:
+    - 安裝: getting-started/installation.md
+    - 資料獲取: getting-started/data-acquisition.md
+    - 五分鐘教學: getting-started/quickstart.md
+  - 使用指南:
+    - Bar 聚合: user-guide/bar.md
+    - Factor 因子: user-guide/factor.md
+    - 表達式語法: user-guide/parser.md
+    - 因子分析: user-guide/analyzer.md
+    - 策略回測: user-guide/backtest.md
+  - 開發者:
+    - 測試策略: dev/testing.md
+    - 回歸運算子設計: dev/regression-operators.md

@@ -1,6 +1,6 @@
-# Factor Analyzer 實作文件
+# 因子分析
 
-本文件記錄了 `FactorAnalyzer` 的設計與實作細節。這個模組旨在提供一套標準化的工具，用於評估因子的有效性與獲利能力。
+本頁說明 `FactorAnalyzer` 的使用方式與功能。
 
 ## 1. 概述
 
@@ -60,10 +60,3 @@
 *   **數據對齊**: `prepare_data` 採用 Inner Join + DropNA 策略，確保分析僅基於完整的數據點，避免偏差。
 *   **依賴管理**: 繪圖功能被設計為選用 (Optional)，核心邏輯不強依賴 `matplotlib`，僅在呼叫 `plot_*` 方法時才需要。
 *   **錯誤處理**: 針對空數據、無效的分層數量、相關性計算樣本不足等情況加入了防禦性檢查。
-
-## 5. 檔案變更列表
-
-*   `src/factorium/factors/analyzer.py`: 新增核心分析器。
-*   `src/factorium/factors/plotting_analyzer.py`: 新增繪圖模組。
-*   `src/factorium/factors/__init__.py`: 導出新類別。
-*   `tests/factors/test_analyzer.py`: 完整的單元測試覆蓋。
