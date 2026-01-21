@@ -53,3 +53,25 @@ def test_prepare_data(sample_data):
     # Return = (prices.shift(-1) - prices) / prices
     p1_returns = df["period_1"].dropna()
     assert not p1_returns.empty
+
+
+def test_prepare_data_empty_factor():
+    # Create an empty factor
+    empty_df = pd.DataFrame(columns=["start_time", "end_time", "symbol", "factor"])
+    factor = Factor(empty_df)
+
+    # Create some price data
+    dates = pd.date_range("2023-01-01", periods=5, freq="D")
+    price_data = pd.DataFrame(
+        {
+            "start_time": [int(d.timestamp() * 1000) for d in dates],
+            "end_time": [int((d + pd.Timedelta(days=1)).timestamp() * 1000) for d in dates],
+            "symbol": "AAPL",
+            "close": [100.0] * 5,
+        }
+    )
+    prices = Factor(price_data)
+
+    analyzer = FactorAnalyzer(factor, prices)
+    with pytest.raises(ValueError, match="Factor data is empty."):
+        analyzer.prepare_data()

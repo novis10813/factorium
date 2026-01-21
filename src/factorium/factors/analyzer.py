@@ -22,7 +22,7 @@ class FactorAnalyzer:
         else:
             self.prices = prices
 
-    def prepare_data(self, periods: List[int] = [1, 5, 10], price_col: Optional[str] = None) -> pd.DataFrame:
+    def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pd.DataFrame:
         """
         Prepare data for analysis by aligning factor values with future returns.
 
@@ -33,6 +33,11 @@ class FactorAnalyzer:
         Returns:
             pd.DataFrame: Merged data with 'factor' and 'period_n' returns.
         """
+        if self.factor.data.empty:
+            raise ValueError("Factor data is empty.")
+
+        if periods is None:
+            periods = [1, 5, 10]
         if price_col is not None and isinstance(self._raw_prices, AggBar):
             prices_factor = self._raw_prices[price_col]
         elif self.prices is not None:
