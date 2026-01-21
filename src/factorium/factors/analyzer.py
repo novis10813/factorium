@@ -146,7 +146,7 @@ class FactorAnalyzer:
 
         def assign_quantiles(x):
             try:
-                return pd.qcut(x, quantiles, labels=False) + 1
+                return pd.qcut(x, quantiles, labels=False, duplicates="drop") + 1
             except ValueError:
                 return pd.Series([np.nan] * len(x), index=x.index)
 
