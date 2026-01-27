@@ -1,316 +1,288 @@
-# Bar 聚合模組 (`factorium/bar.py`)
+# Bar 聚合模組
 
 ## 概述
 
-`bar.py` 提供了一組用於將逐筆交易數據（tick data）聚合成不同類型 K 線（bars）的類別。支援時間條、Tick 條、成交量條和美元條等多種聚合方式，並提供靈活的特徵工程功能。
+Factorium 使用 DuckDB 進行高效能的 Bar 聚合，支援四種類型的 K 線：
 
-## 類別繼承結構
+| Bar 類型 | 聚合依據 | 適用場景 |
+|----------|----------|----------|
+| **Time Bar** | 固定時間間隔 | 傳統技術分析，時間一致性 |
+| **Tick Bar** | 固定交易筆數 | 高頻交易分析，反映市場活動強度 |
+| **Volume Bar** | 固定成交量 | 成交量分析，標準化成交量資訊 |
+| **Dollar Bar** | 固定交易金額 | 跨價格比較，不受價格變化影響 |
 
-```
-BaseBar (ABC)
-├── TimeBar      # 時間條
-├── TickBar      # Tick 條
-├── VolumeBar    # 成交量條
-└── DollarBar    # 美元條
-```
+---
 
-## 基礎類別：`BaseBar`
+## 使用方式
 
-### 初始化參數
+### 透過 `load_aggbar` 統一介面
 
-| 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
-| `df` | `pd.DataFrame` | - | 原始交易數據 |
-| `timestamp_col` | `str` | `'ts_init'` | 時間戳欄位名稱 |
-| `price_col` | `str` | `'price'` | 價格欄位名稱 |
-| `volume_col` | `str` | `'size'` | 成交量欄位名稱 |
-| `interval` | `int` | `100000` | 聚合間隔（具體含義依子類別而定） |
-
-### 屬性
-
-| 屬性 | 類型 | 說明 |
-|------|------|------|
-| `bars` | `pd.DataFrame` | 聚合後的 K 線數據 |
-
-### 輸出欄位
-
-聚合後的 `bars` DataFrame 包含以下欄位：
-
-| 欄位 | 說明 |
-|------|------|
-| `start_time` | Bar 開始時間 |
-| `end_time` | Bar 結束時間 |
-| `open` | 開盤價 |
-| `high` | 最高價 |
-| `low` | 最低價 |
-| `close` | 收盤價 |
-| `volume` | 成交量 |
-
-### 主要方法
-
-#### `apply()`
-
-對已聚合的 bars 進行特徵計算。
+最簡單的方式是透過 `BinanceDataLoader.load_aggbar()` 方法，它會自動處理下載、快取和聚合：
 
 ```python
-def apply(self, transformations: Dict[str, Callable]) -> 'BaseBar'
+from factorium import BinanceDataLoader
+
+loader = BinanceDataLoader()
+
+# Time Bar：1 分鐘 K 線
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT", "ETHUSDT"],
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=7,
+    bar_type="time",
+    interval=60_000,  # 毫秒
+)
+
+# Tick Bar：每 1000 筆交易
+tick_agg = loader.load_aggbar(
+    symbols=["BTCUSDT"],
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=1,
+    bar_type="tick",
+    interval=1000,
+)
+
+# Volume Bar：每累積 100 單位成交量
+volume_agg = loader.load_aggbar(
+    symbols=["BTCUSDT"],
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=1,
+    bar_type="volume",
+    interval=100,
+)
+
+# Dollar Bar：每累積 100 萬美元
+dollar_agg = loader.load_aggbar(
+    symbols=["BTCUSDT"],
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=1,
+    bar_type="dollar",
+    interval=1_000_000,
+)
 ```
 
-**參數說明：**
+### `load_aggbar` 參數說明
 
 | 參數 | 類型 | 說明 |
 |------|------|------|
-| `transformations` | `Dict` | 特徵轉換字典，key 為新欄位名，value 為轉換函數 |
+| `symbols` | `list[str]` | 要載入的標的代碼列表 |
+| `data_type` | `str` | 資料類型（`"aggTrades"`, `"trades"` 等） |
+| `market_type` | `str` | 市場類型（`"spot"`, `"futures"`） |
+| `futures_type` | `str` | 期貨類型（`"um"` USDT-M, `"cm"` Coin-M） |
+| `start_date` | `str` | 開始日期（`"YYYY-MM-DD"` 格式） |
+| `days` | `int` | 載入天數 |
+| `bar_type` | `str` | Bar 類型（`"time"`, `"tick"`, `"volume"`, `"dollar"`） |
+| `interval` | `int` | 聚合間隔（意義依 bar_type 而定） |
+| `use_cache` | `bool` | 是否使用快取（預設 `True`） |
 
-轉換函數接收完整的 `bars` DataFrame，回傳 `pd.Series` 或純量值。
+---
 
-**範例：**
+## 輸出格式
+
+聚合後的 `AggBar` 包含以下欄位：
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| `symbol` | `str` | 標的代碼 |
+| `start_time` | `int` | Bar 開始時間（毫秒 timestamp） |
+| `end_time` | `int` | Bar 結束時間（毫秒 timestamp） |
+| `open` | `float` | 開盤價 |
+| `high` | `float` | 最高價 |
+| `low` | `float` | 最低價 |
+| `close` | `float` | 收盤價 |
+| `volume` | `float` | 成交量 |
+| `trade_count` | `int` | 交易筆數 |
+
+### 存取資料
 
 ```python
-bar.apply({
-    'forward_return_5': lambda bars: (bars['close'].shift(-5) - bars['close']) / bars['close'],
-    'sma_20': lambda bars: bars['close'].rolling(20).mean(),
-    'volatility': lambda bars: bars['close'].pct_change().rolling(20).std(),
-    'price_momentum': lambda bars: bars['close'] / bars['close'].shift(10) - 1
-})
+# 查看 metadata（不需重新計算）
+print(agg.symbols)           # ['BTCUSDT', 'ETHUSDT']
+print(agg.metadata.num_rows) # 資料列數
+print(agg.metadata.min_time) # 最早時間
+print(agg.metadata.max_time) # 最晚時間
+
+# 取得 Polars DataFrame
+df_polars = agg.to_polars()
+
+# 取得 Pandas DataFrame（用於繪圖等）
+df_pandas = agg.to_df()
+
+# 提取單一欄位為 Factor
+close = agg["close"]
+volume = agg["volume"]
 ```
 
 ---
 
-## 子類別
+## Bar 類型詳解
 
-### `TimeBar`
+### Time Bar
 
-按固定時間間隔聚合交易數據。
+按固定時間間隔聚合，是最常見的 K 線類型。
 
-#### 初始化參數
+**特點：**
+- 時間軸均勻分布
+- 適合傳統技術分析
+- 在低波動時期可能產生許多無交易的空 bar
 
-| 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
-| `df` | `pd.DataFrame` | - | 原始交易數據 |
-| `timestamp_col` | `str` | `'ts_init'` | 時間戳欄位名稱 |
-| `price_col` | `str` | `'price'` | 價格欄位名稱 |
-| `volume_col` | `str` | `'size'` | 成交量欄位名稱 |
-| `interval_ms` | `int` | `60_000` | 時間間隔（毫秒） |
-
-#### 使用範例
+**interval 單位：** 毫秒
 
 ```python
-from factorium import TimeBar
+# 1 分鐘 K 線
+agg_1m = loader.load_aggbar(..., bar_type="time", interval=60_000)
 
-# 建立 1 分鐘 K 線
-time_bar = TimeBar(
-    df=trades_df,
-    timestamp_col='time',
-    price_col='price',
-    volume_col='qty',
-    interval_ms=60_000  # 1 分鐘
-)
+# 5 分鐘 K 線
+agg_5m = loader.load_aggbar(..., bar_type="time", interval=300_000)
 
-# 建立 5 分鐘 K 線
-time_bar_5m = TimeBar(df=trades_df, interval_ms=300_000)
+# 1 小時 K 線
+agg_1h = loader.load_aggbar(..., bar_type="time", interval=3_600_000)
+```
 
-# 取得聚合後的 bars
-bars = time_bar.bars
+### Tick Bar
+
+按固定交易筆數聚合。
+
+**特點：**
+- 反映市場活動強度
+- 在高波動時期 bar 較密集
+- 適合高頻交易研究
+
+**interval 單位：** 交易筆數
+
+```python
+# 每 500 筆交易
+agg = loader.load_aggbar(..., bar_type="tick", interval=500)
+
+# 每 1000 筆交易
+agg = loader.load_aggbar(..., bar_type="tick", interval=1000)
+```
+
+### Volume Bar
+
+按固定成交量聚合。
+
+**特點：**
+- 標準化每個 bar 的成交量資訊
+- 在大額交易時 bar 較密集
+- 適合成交量分析策略
+
+**interval 單位：** 成交量（與原始資料的 quantity 欄位單位相同）
+
+```python
+# 每累積 100 BTC
+agg = loader.load_aggbar(..., bar_type="volume", interval=100)
+
+# 每累積 1000 BTC
+agg = loader.load_aggbar(..., bar_type="volume", interval=1000)
+```
+
+### Dollar Bar
+
+按固定交易金額聚合（價格 × 成交量）。
+
+**特點：**
+- 不受價格變化影響
+- 適合跨時期比較
+- 在大額交易時 bar 較密集
+
+**interval 單位：** 美元金額
+
+```python
+# 每累積 10 萬美元
+agg = loader.load_aggbar(..., bar_type="dollar", interval=100_000)
+
+# 每累積 100 萬美元
+agg = loader.load_aggbar(..., bar_type="dollar", interval=1_000_000)
 ```
 
 ---
 
-### `TickBar`
+## 快取機制
 
-按固定筆數聚合交易數據。
+`load_aggbar` 預設啟用快取，聚合後的資料會存為 Parquet 檔案：
 
-#### 初始化參數
+```
+~/.factorium/cache/bars/{market_type}/{futures_type}/{bar_type}/{symbol}/{date}.parquet
+```
 
-| 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
-| `df` | `pd.DataFrame` | - | 原始交易數據 |
-| `timestamp_col` | `str` | `'ts_init'` | 時間戳欄位名稱 |
-| `price_col` | `str` | `'price'` | 價格欄位名稱 |
-| `volume_col` | `str` | `'size'` | 成交量欄位名稱 |
-| `interval_ticks` | `int` | `100000` | 每個 bar 的交易筆數 |
-
-#### 使用範例
+### 快取控制
 
 ```python
-from factorium import TickBar
-
-# 每 1000 筆交易聚合成一個 bar
-tick_bar = TickBar(
-    df=trades_df,
-    timestamp_col='time',
-    price_col='price',
-    volume_col='qty',
-    interval_ticks=1000
-)
-
-bars = tick_bar.bars
+# 強制重新聚合（忽略快取）
+agg = loader.load_aggbar(..., use_cache=False)
 ```
 
 ---
 
-### `VolumeBar`
+## 底層 API：BarAggregator
 
-按固定成交量聚合交易數據。
-
-#### 初始化參數
-
-| 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
-| `df` | `pd.DataFrame` | - | 原始交易數據 |
-| `timestamp_col` | `str` | `'time'` | 時間戳欄位名稱 |
-| `price_col` | `str` | `'price'` | 價格欄位名稱 |
-| `volume_col` | `str` | `'quote_qty'` | 成交量欄位名稱 |
-| `interval_volume` | `int` | `100000` | 每個 bar 的目標成交量 |
-
-#### 使用範例
+如果需要更細緻的控制，可以直接使用 `BarAggregator`：
 
 ```python
-from factorium import VolumeBar
+from factorium.data import BarAggregator
 
-# 每累積 10000 單位成交量聚合成一個 bar
-volume_bar = VolumeBar(
-    df=trades_df,
-    timestamp_col='time',
-    price_col='price',
-    volume_col='qty',
-    interval_volume=10000
+aggregator = BarAggregator(data_dir="~/.factorium/data")
+
+# 聚合 Time Bar
+df, metadata = aggregator.aggregate_time_bars(
+    parquet_pattern="/path/to/data/*.parquet",
+    interval_ms=60_000,
 )
 
-bars = volume_bar.bars
-```
-
----
-
-### `DollarBar`
-
-按固定美元金額聚合交易數據（價格 × 成交量）。
-
-#### 初始化參數
-
-| 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
-| `df` | `pd.DataFrame` | - | 原始交易數據 |
-| `timestamp_col` | `str` | `'ts_init'` | 時間戳欄位名稱 |
-| `price_col` | `str` | `'price'` | 價格欄位名稱 |
-| `volume_col` | `str` | `'size'` | 成交量欄位名稱 |
-| `interval_dollar` | `int` | `100000` | 每個 bar 的目標金額 |
-
-#### 使用範例
-
-```python
-from factorium import DollarBar
-
-# 每累積 100 萬美元聚合成一個 bar
-dollar_bar = DollarBar(
-    df=trades_df,
-    timestamp_col='time',
-    price_col='price',
-    volume_col='qty',
-    interval_dollar=1_000_000
+# 聚合 Tick Bar
+df, metadata = aggregator.aggregate_tick_bars(
+    parquet_pattern="/path/to/data/*.parquet",
+    interval_ticks=1000,
 )
 
-bars = dollar_bar.bars
-```
-
----
-
-## 完整使用範例
-
-### 基本使用
-
-```python
-import pandas as pd
-from factorium import TimeBar, TickBar, VolumeBar, DollarBar
-
-# 假設 trades_df 為原始交易數據
-trades_df = pd.read_csv('trades.csv')
-
-# 建立 1 分鐘 K 線
-time_bar = TimeBar(
-    df=trades_df,
-    timestamp_col='time',
-    price_col='price',
-    volume_col='qty',
-    interval_ms=60_000
+# 聚合 Volume Bar
+df, metadata = aggregator.aggregate_volume_bars(
+    parquet_pattern="/path/to/data/*.parquet",
+    interval_volume=100,
 )
 
-print(time_bar.bars.head())
-```
-
-### 方法鏈式呼叫（Method Chaining）
-
-```python
-from factorium import TimeBar
-
-# 建立 bar 並添加多種特徵
-bars = (
-    TimeBar(df=trades_df, interval_ms=60_000)
-    .apply({
-        'sma_20': lambda bars: bars['close'].rolling(20).mean(),
-        'ema_12': lambda bars: bars['close'].ewm(span=12).mean(),
-        'volatility': lambda bars: bars['close'].pct_change().rolling(20).std(),
-        'forward_return': lambda bars: bars['close'].shift(-1) / bars['close'] - 1
-    })
-    .bars
+# 聚合 Dollar Bar
+df, metadata = aggregator.aggregate_dollar_bars(
+    parquet_pattern="/path/to/data/*.parquet",
+    interval_dollar=1_000_000,
 )
 ```
 
-### 不同 Bar 類型比較
+### 回傳值
 
-```python
-from factorium import TimeBar, TickBar, VolumeBar, DollarBar
+所有 `aggregate_*_bars` 方法回傳 `tuple[pl.DataFrame, AggBarMetadata]`：
 
-# 同一份數據建立不同類型的 bar
-time_bars = TimeBar(df=trades_df, interval_ms=60_000).bars
-tick_bars = TickBar(df=trades_df, interval_ticks=1000).bars
-volume_bars = VolumeBar(df=trades_df, interval_volume=10000).bars
-dollar_bars = DollarBar(df=trades_df, interval_dollar=1_000_000).bars
-
-print(f"TimeBar count: {len(time_bars)}")
-print(f"TickBar count: {len(tick_bars)}")
-print(f"VolumeBar count: {len(volume_bars)}")
-print(f"DollarBar count: {len(dollar_bars)}")
-```
+- **`pl.DataFrame`**: Polars DataFrame，包含聚合後的 OHLCV 資料
+- **`AggBarMetadata`**: 包含 `symbols`, `min_time`, `max_time`, `num_rows`
 
 ---
 
-## Bar 類型比較
+## 效能說明
 
-| 類型 | 聚合依據 | 適用場景 | 優點 |
-|------|----------|----------|------|
-| `TimeBar` | 固定時間間隔 | 傳統技術分析 | 時間一致性，易於理解 |
-| `TickBar` | 固定交易筆數 | 高頻交易分析 | 反映市場活動強度 |
-| `VolumeBar` | 固定成交量 | 成交量分析 | 標準化成交量資訊 |
-| `DollarBar` | 固定交易金額 | 跨價格比較 | 不受價格變化影響 |
+Bar 聚合使用 DuckDB 的 SQL 引擎，效能特點：
 
----
-
-## 效能優化
-
-本模組使用 `numba` JIT 編譯來加速分組計算：
-
-- `TimeBar._group_trades_by_time()`
-- `TickBar._group_trades_by_tick()`
-- `VolumeBar._group_trades_by_volume()`
-- `DollarBar._group_trades_by_dollar()`
-
-首次執行時會有編譯延遲，後續執行會顯著加速。
-
----
-
-## 依賴套件
-
-- `pandas`：數據處理
-- `numpy`：數值運算
-- `numba`：JIT 編譯加速
+- **記憶體效率**：透過 Parquet 格式的 lazy evaluation
+- **並行處理**：DuckDB 自動使用多核心
+- **零複製**：DuckDB → Polars 直接傳輸，無中間轉換
 
 ---
 
 ## 注意事項
 
-- 輸入的 `df` 會被複製，不會修改原始數據
-- `apply()` 回傳 `self`，支援方法鏈式呼叫
-- 時間戳應為毫秒級別（milliseconds）
-- `VolumeBar` 和 `DollarBar` 當累積值達到閾值時會切換到下一個 bar，最後一個 bar 可能不完整
-- 各子類別的預設欄位名稱不同，使用時請注意對應
+1. **時間戳格式**：所有時間都是毫秒級 Unix timestamp
+2. **最後一個 Bar**：Volume/Dollar Bar 的最後一個 bar 可能不完整（未達閾值）
+3. **空資料處理**：若指定日期無資料，會回傳空的 DataFrame 和零值 metadata
+4. **多標的聚合**：每個標的獨立聚合，最後合併
