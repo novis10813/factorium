@@ -4,10 +4,12 @@
 
 ## 雙向驗證概念
 
-核心想法是驗證高階的 `Factor` 運算（封裝了 `pandas` 和 `numpy` 邏輯）產生的結果與直接在底層 `pandas.DataFrame` 上應用對應的 `numpy` 運算完全一致。
+核心想法是驗證高階的 `Factor` 運算產生的結果，與「等價的參考實作」在數值上完全一致。
 
-*   **正向路徑（實作）**：在 `Factor` 物件上執行方法（例如 `f1.add(f2)`）。這使用了 `MathOpsMixin` 實作，包含合併邏輯和錯誤處理。
-*   **反向路徑（驗證）**：手動從 `Factor` 物件中提取數據，並應用預期的 `numpy` 函數（例如 `np.add(f1.data, f2.data)`）。
+目前 `Factor` 的主要計算路徑以 **Polars（LazyFrame / expressions）** 為主；在測試中，為了方便斷言與對齊，我們可能會將結果轉成 pandas，再用 `numpy`/`pandas` 作為參考實作來比對。
+
+*   **正向路徑（實作）**：在 `Factor` 物件上執行方法（例如 `f1.add(f2)` / `f1 + f2`）。
+*   **反向路徑（驗證）**：取出資料（必要時轉為 pandas），並應用預期的參考運算（例如以 `numpy`/`pandas` 實作同等邏輯）。
 *   **斷言**：使用 `pd.testing.assert_frame_equal`（或等效的序列對齊方法）比較兩個結果 DataFrame，確保它們在浮點數容差範圍內相同。
 
 ## 實作細節

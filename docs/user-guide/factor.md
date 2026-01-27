@@ -10,7 +10,7 @@
 - **symbol**: 標的代碼（例如 `BTCUSDT`）
 - **factor**: 該因子的數值（例如 close 價、報酬率、Z-score 等）
 
-`Factor` 在內部基於 `pandas.DataFrame`，並提供：
+`Factor` 在內部以 **Polars LazyFrame** 作為主要計算表示（用於延遲計算與效能），並提供：
 
 - **時間序列運算子**：`ts_mean`、`ts_std`、`ts_zscore`、`ts_delta`…  
 - **橫截面運算子**：`rank`、`mean`、`median`  
@@ -61,8 +61,10 @@ factor = Factor("factors/momentum.parquet", name="momentum")
 ## 資料結構與屬性
 
 - **`factor.name`**: 因子名稱（字串）
-- **`factor.data`**: 內部使用的 `pd.DataFrame`，欄位固定為  
+- **`factor.data`**: 以 `polars.DataFrame` 形式回傳目前資料（會觸發 collect），欄位固定為  
   `["start_time", "end_time", "symbol", "factor"]`
+- **`factor.lazy`**: 以 `polars.LazyFrame` 形式回傳（不會立刻執行）
+- **`factor.to_pandas()`**: 如需 pandas，請用此方法轉換
 
 ```python
 print(factor.name)

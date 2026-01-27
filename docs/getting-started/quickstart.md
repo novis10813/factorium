@@ -30,8 +30,15 @@ print(f"載入 {len(df):,} 筆交易")
 from factorium import TimeBar
 
 # 將 tick 數據聚合成 1 小時 K 線
-bar = TimeBar(trades=df, resolution=60)  # 60 分鐘
-ohlcv = bar.get_bars()
+# 注意：TimeBar 需要毫秒 timestamp 欄位（預設 `ts_init`）
+bar = TimeBar(
+    df,
+    timestamp_col="time",      # 依你的資料欄位調整
+    price_col="price",
+    volume_col="qty",
+    interval_ms=60 * 60 * 1000,  # 1 小時
+)
+ohlcv = bar.bars
 
 print(ohlcv.head())
 ```
@@ -45,8 +52,8 @@ print(ohlcv.head())
 agg = AggBar.from_parquet("data/crypto_1h.parquet")
 
 # 查看結構
-print(f"標的數量: {agg.n_symbols}")
-print(f"時間點數量: {agg.n_timestamps}")
+print(f"標的數量: {len(agg.symbols)}")
+print(f"時間點數量: {len(agg.timestamps)}")
 print(f"欄位: {agg.cols}")
 ```
 

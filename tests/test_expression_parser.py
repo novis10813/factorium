@@ -32,7 +32,7 @@ def assert_expression_equals_method_chain(expr: str, context: dict, method_chain
     parsed_result = Factor.from_expression(expr, context)
 
     # Compare results
-    assert_factor_equals_df(parsed_result, method_chain_result.data["factor"])
+    assert_factor_equals_df(parsed_result, pd.Series(method_chain_result.to_pandas()["factor"]))
 
 
 # ==========================================

@@ -37,8 +37,9 @@ class FactorAnalyzer:
         Returns:
             pd.DataFrame: Merged data with 'factor' and 'period_n' returns.
         """
-        original_count = len(self.factor.data)
-        if self.factor.data.empty:
+        factor_pd = self.factor.to_pandas()
+        original_count = len(factor_pd)
+        if factor_pd.empty:
             raise ValueError("Factor data is empty.")
 
         if periods is None:
@@ -60,10 +61,10 @@ class FactorAnalyzer:
 
         # Align and merge
         # Start with factor data
-        df = self.factor.data.copy()
+        df = factor_pd
 
         for name, ret_factor in returns.items():
-            ret_data = ret_factor.data.rename(columns={"factor": name})
+            ret_data = ret_factor.to_pandas().rename(columns={"factor": name})
             # Use inner join to ensure we have both factor and returns
             df = pd.merge(df, ret_data, on=["start_time", "end_time", "symbol"], how="inner")
 

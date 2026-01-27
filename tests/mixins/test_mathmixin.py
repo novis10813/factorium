@@ -14,7 +14,7 @@ def assert_factor_equals_df(factor_res: Factor, expected_series: pd.Series, chec
     """
     Verifies that the factor's data matches the expected pandas Series.
     """
-    actual_df = factor_res.data.copy()
+    actual_df = factor_res.to_pandas().copy()
 
     assert len(actual_df) == len(expected_series), "Length mismatch"
 
@@ -28,18 +28,24 @@ def assert_factor_equals_df(factor_res: Factor, expected_series: pd.Series, chec
 
 def emulate_unary_op(factor, func):
     """Applies a numpy function to the factor's 'factor' column"""
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     return func(df["factor"])
 
 
 def emulate_binary_op(f1, f2, func):
     """Applies a binary function between two factors"""
-    m = pd.merge(f1.data, f2.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"), how="inner")
+    m = pd.merge(
+        f1.to_pandas(),
+        f2.to_pandas(),
+        on=["start_time", "end_time", "symbol"],
+        suffixes=("_x", "_y"),
+        how="inner",
+    )
     return func(m["factor_x"], m["factor_y"])
 
 
 def emulate_binary_scalar_op(f1, scalar, func):
-    df = f1.data.copy()
+    df = f1.to_pandas().copy()
     return func(df["factor"], scalar)
 
 
@@ -183,7 +189,7 @@ def test_where(factor_close):
     cond = factor_close > 0
     res = factor_close.where(cond, 999)
 
-    df = factor_close.data.copy()
+    df = factor_close.to_pandas().copy()
     cond_vals = df["factor"] > 0
     expected_vals = np.where(cond_vals, df["factor"], 999)
 

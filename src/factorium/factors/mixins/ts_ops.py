@@ -5,149 +5,280 @@ except ImportError:
 
 import numpy as np
 import pandas as pd
+import polars as pl
 from scipy.stats import cauchy, norm, uniform
+
+from ...constants import EPSILON
 
 
 class TimeSeriesOpsMixin:
-    def ts_rank(self, window: int) -> Self:
-        self._validate_window(window)
-
-        result = self._data.copy()
-
-        def rank_window(w):
-            if np.isnan(w).any() or len(np.unique(w)) == 1:
-                return np.nan
-            sorted_idx = np.argsort(w)
-            rank_array = np.empty_like(sorted_idx, dtype=float)
-            rank_array[sorted_idx] = np.arange(1, len(w) + 1)
-            return rank_array[-1] / len(w)
-
-        result["factor"] = (
-            result.groupby("symbol")["factor"]
-            .rolling(window, min_periods=window)
-            .apply(rank_window, raw=True)
-            .reset_index(level=0, drop=True)
-        )
-
-        return self.__class__(result, f"ts_rank({self.name},{window})")
+    """Time-series operations mixin using pure Polars LazyFrame."""
 
     def ts_sum(self, window: int) -> Self:
+        """Strict rolling sum: NaN if window contains NaN or insufficient length."""
         self._validate_window(window)
 
-        result = self._data.copy()
+        # Add a row index to preserve original order
+        result_lf = (
+            self._lf.with_row_index("__row_idx__")
+            .sort(["symbol", "end_time"])
+            .with_columns(
+                pl.col("factor").rolling_sum(window_size=window, min_samples=window).over("symbol").alias("factor")
+            )
+            .sort("__row_idx__")
+            .drop("__row_idx__")
+        )
 
-        def safe_sum(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.sum()
-
-        result = self._apply_rolling(safe_sum, window)
-
-        return self.__class__(result, f"ts_sum({self.name},{window})")
+        return self.__class__(result_lf, f"ts_sum({self.name},{window})")
 
     def ts_product(self, window: int) -> Self:
+        """Strict rolling product: NaN if window contains NaN or insufficient length.
+
+        Uses log/exp transformation for numerical stability:
+        prod(x) = sign_prod * exp(sum(log(|x|)))
+        Handles zero and negative values correctly.
+        """
         self._validate_window(window)
 
-        def safe_prod(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.prod()
+        # Create NaN-in-window mask
+        nan_in_window = (
+            (pl.col("factor").is_null() | pl.col("factor").is_nan())
+            .cast(pl.Int64)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .fill_null(1)
+        )
 
-        result = self._apply_rolling(safe_prod, window)
+        # Check for zero in window (product = 0)
+        has_zero = (
+            (pl.col("factor") == 0)
+            .cast(pl.Int64)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .fill_null(0)
+        )
 
-        return self.__class__(result, f"ts_product({self.name},{window})")
+        # Count negative values in window for sign determination
+        neg_count = (
+            (pl.col("factor") < 0).cast(pl.Int64).rolling_sum(window_size=window, min_samples=window).over("symbol")
+        )
+
+        # Product of absolute values via log/exp transformation
+        abs_prod = pl.col("factor").abs().log().rolling_sum(window_size=window, min_samples=window).over("symbol").exp()
+
+        # Determine sign: (-1)^neg_count
+        sign_expr = pl.when(neg_count % 2 == 1).then(pl.lit(-1.0)).otherwise(pl.lit(1.0))
+
+        # Final product: handle NaN, zero, and normal cases
+        prod_expr = (
+            pl.when(nan_in_window > 0)
+            .then(pl.lit(None))
+            .when(has_zero > 0)
+            .then(pl.lit(0.0))
+            .otherwise(sign_expr * abs_prod)
+        )
+
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"]).with_columns(prod_expr.alias("factor")).sort(["end_time", "symbol"])
+        )
+
+        return self.__class__(result_lf, f"ts_product({self.name},{window})")
 
     def ts_mean(self, window: int) -> Self:
+        """Strict rolling mean: NaN if window contains NaN or insufficient length."""
         self._validate_window(window)
 
-        def safe_mean(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.mean()
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"])
+            .with_columns(
+                pl.col("factor").rolling_mean(window_size=window, min_samples=window).over("symbol").alias("factor")
+            )
+            .sort(["end_time", "symbol"])
+        )
 
-        result = self._apply_rolling(safe_mean, window)
-
-        return self.__class__(result, f"ts_mean({self.name},{window})")
+        return self.__class__(result_lf, f"ts_mean({self.name},{window})")
 
     def ts_median(self, window: int) -> Self:
+        """Strict rolling median: NaN if window contains NaN or insufficient length."""
         self._validate_window(window)
 
-        def safe_median(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.median()
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("factor").rolling_median(window_size=window, min_samples=window).over("symbol").alias("factor")
+        )
 
-        result = self._apply_rolling(safe_median, window)
-
-        return self.__class__(result, f"ts_median({self.name},{window})")
+        return self.__class__(result_lf, f"ts_median({self.name},{window})")
 
     def ts_std(self, window: int) -> Self:
+        """Strict rolling std: NaN if window contains NaN or insufficient length."""
         self._validate_window(window)
 
-        def safe_std(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.std()
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("factor").rolling_std(window_size=window, min_samples=window).over("symbol").alias("factor")
+        )
 
-        result = self._apply_rolling(safe_std, window)
-
-        return self.__class__(result, f"ts_std({self.name},{window})")
+        return self.__class__(result_lf, f"ts_std({self.name},{window})")
 
     def ts_min(self, window: int) -> Self:
+        """Strict rolling min: NaN if window contains NaN or insufficient length."""
         self._validate_window(window)
 
-        def safe_min(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.min()
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("factor").rolling_min(window_size=window, min_samples=window).over("symbol").alias("factor")
+        )
 
-        result = self._apply_rolling(safe_min, window)
-
-        return self.__class__(result, f"ts_min({self.name},{window})")
+        return self.__class__(result_lf, f"ts_min({self.name},{window})")
 
     def ts_max(self, window: int) -> Self:
+        """Strict rolling max: NaN if window contains NaN or insufficient length."""
         self._validate_window(window)
 
-        def safe_max(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else x.max()
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("factor").rolling_max(window_size=window, min_samples=window).over("symbol").alias("factor")
+        )
 
-        result = self._apply_rolling(safe_max, window)
-
-        return self.__class__(result, f"ts_max({self.name},{window})")
+        return self.__class__(result_lf, f"ts_max({self.name},{window})")
 
     def ts_argmin(self, window: int) -> Self:
+        """Rolling argmin: position of minimum in window (pure Polars).
+
+        Returns the distance from the end of the window to the minimum value position.
+        NaN if window contains NaN or has insufficient length.
+        """
         self._validate_window(window)
 
-        def safe_argmin(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else (len(x) - 1) - x.argmin()
+        # Add row index within each symbol group for rolling()
+        sorted_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.int_range(pl.len()).over("symbol").alias("_idx")
+        )
 
-        result = self._apply_rolling(safe_argmin, window)
+        # Create rolling windows as lists
+        with_windows = sorted_lf.with_columns(
+            pl.col("factor")
+            .rolling(index_column="_idx", period=f"{window}i", closed="right")
+            .over("symbol")
+            .alias("_window")
+        )
 
-        return self.__class__(result, f"ts_argmin({self.name},{window})")
+        # Calculate argmin with NaN checking
+        with_argmin = with_windows.with_columns(
+            [
+                pl.col("_window").list.len().alias("_len"),
+                # Check for NaN or null in window
+                pl.col("_window")
+                .list.eval(pl.element().is_nan().any() | pl.element().is_null().any())
+                .list.first()
+                .alias("_has_nan"),
+                pl.col("_window").list.arg_min().alias("_argmin_raw"),
+            ]
+        )
+
+        # Final result: (len - 1 - argmin) gives distance from end
+        result_lf = (
+            with_argmin.with_columns(
+                pl.when(pl.col("_has_nan") | (pl.col("_len") < window))
+                .then(None)
+                .otherwise((pl.col("_len") - 1 - pl.col("_argmin_raw")).cast(pl.Float64))
+                .alias("factor")
+            )
+            .drop(["_idx", "_window", "_len", "_has_nan", "_argmin_raw"])
+            .sort(["end_time", "symbol"])
+        )
+
+        return self.__class__(result_lf, f"ts_argmin({self.name},{window})")
 
     def ts_argmax(self, window: int) -> Self:
+        """Rolling argmax: position of maximum in window (pure Polars).
+
+        Returns the distance from the end of the window to the maximum value position.
+        NaN if window contains NaN or has insufficient length.
+        """
         self._validate_window(window)
 
-        def safe_argmax(x: pd.Series) -> float:
-            return np.nan if (x.isna().any() or len(x) < window) else (len(x) - 1) - x.argmax()
+        # Add row index within each symbol group for rolling()
+        sorted_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.int_range(pl.len()).over("symbol").alias("_idx")
+        )
 
-        result = self._apply_rolling(safe_argmax, window)
+        # Create rolling windows as lists
+        with_windows = sorted_lf.with_columns(
+            pl.col("factor")
+            .rolling(index_column="_idx", period=f"{window}i", closed="right")
+            .over("symbol")
+            .alias("_window")
+        )
 
-        return self.__class__(result, f"ts_argmax({self.name},{window})")
+        # Calculate argmax with NaN checking
+        with_argmax = with_windows.with_columns(
+            [
+                pl.col("_window").list.len().alias("_len"),
+                # Check for NaN or null in window
+                pl.col("_window")
+                .list.eval(pl.element().is_nan().any() | pl.element().is_null().any())
+                .list.first()
+                .alias("_has_nan"),
+                pl.col("_window").list.arg_max().alias("_argmax_raw"),
+            ]
+        )
+
+        # Final result: (len - 1 - argmax) gives distance from end
+        result_lf = (
+            with_argmax.with_columns(
+                pl.when(pl.col("_has_nan") | (pl.col("_len") < window))
+                .then(None)
+                .otherwise((pl.col("_len") - 1 - pl.col("_argmax_raw")).cast(pl.Float64))
+                .alias("factor")
+            )
+            .drop(["_idx", "_window", "_len", "_has_nan", "_argmax_raw"])
+            .sort(["end_time", "symbol"])
+        )
+
+        return self.__class__(result_lf, f"ts_argmax({self.name},{window})")
 
     def ts_scale(self, window: int, constant: float = 0) -> Self:
         self._validate_window(window)
 
-        min_factor = self.ts_min(window)
-        max_factor = self.ts_max(window)
+        nan_in_window = (
+            (pl.col("factor").is_null() | pl.col("factor").is_nan())
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .cast(pl.Int64)
+            .fill_null(1)
+        )
 
-        result = (self - min_factor) / (max_factor - min_factor)
-        result._data["factor"] = self._replace_inf(result._data["factor"])
+        min_expr = pl.col("factor").rolling_min(window_size=window, min_samples=window).over("symbol")
+        max_expr = pl.col("factor").rolling_max(window_size=window, min_samples=window).over("symbol")
+        denom = max_expr - min_expr
+        scale_expr = (pl.col("factor") - min_expr) / denom
+        scale_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(scale_expr)
+        scale_expr = pl.when(denom.abs() <= EPSILON).then(pl.lit(None)).otherwise(scale_expr)
+        scale_expr = pl.when(scale_expr.is_finite()).then(scale_expr).otherwise(pl.lit(None))
 
-        result += constant
-
-        return self.__class__(result._data, f"ts_scale({self.name},{window},{constant})")
+        result_lf = self._lf.with_columns((scale_expr + pl.lit(constant)).alias("factor"))
+        return self.__class__(result_lf, f"ts_scale({self.name},{window},{constant})")
 
     def ts_zscore(self, window: int) -> Self:
         self._validate_window(window)
 
-        mean_factor = self.ts_mean(window)
-        std_factor = self.ts_std(window)
+        nan_in_window = (
+            (pl.col("factor").is_null() | pl.col("factor").is_nan())
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .cast(pl.Int64)
+            .fill_null(1)
+        )
 
-        result = (self - mean_factor) / std_factor
-        result._data["factor"] = self._replace_inf(result._data["factor"])
+        mean_expr = pl.col("factor").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        std_expr = pl.col("factor").rolling_std(window_size=window, min_samples=window).over("symbol")
+        z_expr = (pl.col("factor") - mean_expr) / std_expr
+        z_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(z_expr)
+        z_expr = pl.when(std_expr.abs() <= EPSILON).then(pl.lit(None)).otherwise(z_expr)
+        z_expr = pl.when(z_expr.is_finite()).then(z_expr).otherwise(pl.lit(None))
 
-        return self.__class__(result._data, f"ts_zscore({self.name},{window})")
+        result_lf = self._lf.with_columns(z_expr.alias("factor"))
+        return self.__class__(result_lf, f"ts_zscore({self.name},{window})")
 
     def ts_quantile(self, window: int, driver: str = "gaussian") -> Self:
+        """Transform percentile rank to quantile using PPF function (pure Polars)."""
         self._validate_window(window)
 
         valid_drivers = {
@@ -160,79 +291,107 @@ class TimeSeriesOpsMixin:
 
         ppf_func = valid_drivers[driver]
         ranked_factor = self.ts_rank(window)
-
-        result = ranked_factor._data.copy()
         epsilon = 1e-6
-        result["factor"] = result["factor"].clip(lower=epsilon, upper=1 - epsilon).apply(ppf_func)
 
-        return self.__class__(result, f"ts_quantile({self.name},{window},{driver})")
+        def apply_ppf(x):
+            """Apply PPF to ranked values."""
+            x = np.asarray(x)
+            if np.isnan(x):
+                return np.nan
+            clipped = np.clip(x, epsilon, 1 - epsilon)
+            return ppf_func(clipped)
+
+        result_lf = ranked_factor._lf.with_columns(
+            pl.col("factor").map_batches(lambda s: s.map_elements(apply_ppf, return_dtype=pl.Float64)).alias("factor")
+        )
+
+        return self.__class__(result_lf, f"ts_quantile({self.name},{window},{driver})")
 
     def ts_kurtosis(self, window: int) -> Self:
+        """Rolling kurtosis with strict NaN semantics (pure Polars)."""
         self._validate_window(window)
 
-        result = self._data.copy()
+        # Polars rolling_kurtosis handles NaN propagation natively
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"])
+            .with_columns(
+                pl.col("factor").rolling_kurtosis(window_size=window, min_samples=window).over("symbol").alias("factor")
+            )
+            .sort(["end_time", "symbol"])
+        )
 
-        def kurtosis_vectorized(group):
-            vals = group.values
-            n = len(vals)
-            kurt_vals = np.full(n, np.nan)
-
-            for i in range(window - 1, n):
-                window_vals = vals[i - window + 1 : i + 1]
-
-                if np.isnan(window_vals).any():
-                    continue
-
-                if len(np.unique(window_vals)) < 2:
-                    continue
-
-                mean_val = np.mean(window_vals)
-                std_val = np.std(window_vals, ddof=0)
-
-                if std_val < 1e-10:
-                    continue
-
-                deviations = window_vals - mean_val
-                kurt = np.mean(deviations**4) / (std_val**4) - 3
-                kurt_vals[i] = kurt
-
-            return pd.Series(kurt_vals, index=group.index)
-
-        result["factor"] = result.groupby("symbol", group_keys=False)["factor"].apply(kurtosis_vectorized)
-
-        return self.__class__(result, f"ts_kurtosis({self.name},{window})")
+        return self.__class__(result_lf, f"ts_kurtosis({self.name},{window})")
 
     def ts_skewness(self, window: int) -> Self:
+        """Rolling skewness with strict NaN semantics (pure Polars)."""
         self._validate_window(window)
 
-        n = window
-        mean_val = self.ts_mean(window)
-        diff = self - mean_val
+        # Polars rolling_skew handles NaN propagation natively
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"])
+            .with_columns(
+                pl.col("factor").rolling_skew(window_size=window, min_samples=window).over("symbol").alias("factor")
+            )
+            .sort(["end_time", "symbol"])
+        )
 
-        sum_cube_dev = diff.pow(3).ts_sum(window)
-        sum_square_dev = diff.pow(2).ts_sum(window)
-
-        numerator = sum_cube_dev * n
-        denominator = sum_square_dev.pow(1.5) * ((n - 1) * (n - 2))
-
-        skew = numerator / denominator
-        skew.name = f"ts_skewness({self.name},{window})"
-        return skew
+        return self.__class__(result_lf, f"ts_skewness({self.name},{window})")
 
     def ts_step(self, start: int = 1) -> Self:
-        result = self._data.copy()
-        result["factor"] = result.groupby("symbol").cumcount() + start
-        return self.__class__(result, f"ts_step({self.name},{start})")
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("symbol").cumcount().over("symbol").add(start).alias("factor")
+        )
+        return self.__class__(result_lf, f"ts_step({self.name},{start})")
 
     def ts_shift(self, period: int) -> Self:
-        result = self._data.copy()
-        result["factor"] = result.groupby("symbol")["factor"].shift(period)
-        return self.__class__(result, f"ts_shift({self.name},{period})")
+        """Shift values by period within each symbol group."""
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("factor").shift(period).over("symbol").alias("factor")
+        )
+
+        return self.__class__(result_lf, f"ts_shift({self.name},{period})")
 
     def ts_delta(self, period: int) -> Self:
-        result = self._data.copy()
-        result["factor"] = result.groupby("symbol")["factor"].diff(period)
-        return self.__class__(result, f"ts_delta({self.name},{period})")
+        """Compute period-wise difference within each symbol group."""
+        result_lf = self._lf.sort(["symbol", "end_time"]).with_columns(
+            pl.col("factor").diff(period).over("symbol").alias("factor")
+        )
+
+        return self.__class__(result_lf, f"ts_delta({self.name},{period})")
+
+    def ts_rank(self, window: int) -> Self:
+        """Rolling rank (percentile rank) with strict NaN semantics (pure Polars)."""
+        self._validate_window(window)
+
+        # Create NaN-in-window mask
+        nan_in_window = (
+            (pl.col("factor").is_null() | pl.col("factor").is_nan())
+            .cast(pl.Int64)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .fill_null(1)
+        )
+
+        # Create constant-values mask (std < epsilon)
+        rolling_std = pl.col("factor").rolling_std(window_size=window, min_samples=window).over("symbol")
+
+        # Get rolling rank and convert to percentile
+        rolling_rank_raw = pl.col("factor").rolling_rank(window_size=window, min_samples=window).over("symbol")
+
+        # Apply masks: NaN if any NaN in window or all values are constant
+        rank_expr = (
+            pl.when(nan_in_window > 0)
+            .then(pl.lit(None))
+            .when(rolling_std < EPSILON)
+            .then(pl.lit(None))
+            .otherwise(rolling_rank_raw / pl.lit(window))
+        )
+
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"]).with_columns(rank_expr.alias("factor")).sort(["end_time", "symbol"])
+        )
+
+        return self.__class__(result_lf, f"ts_rank({self.name},{window})")
 
     def ts_beta(self, other: Self, window: int) -> Self:
         """
@@ -242,13 +401,39 @@ class TimeSeriesOpsMixin:
         self._validate_window(window)
         self._validate_factor(other, "ts_beta")
 
-        cov = self.ts_cov(other, window)
-        var = other.ts_std(window).pow(2)
+        if window < 2:
+            result_lf = self._lf.with_columns(pl.lit(None).alias("factor"))
+            return self.__class__(result_lf, f"ts_beta({self.name},{other.name},{window})")
 
-        result = cov / var
-        result.data["factor"] = self._replace_inf(result.data["factor"])
+        joined = self._lf.join(
+            other._lf.rename({"factor": "factor_x"}), on=["start_time", "end_time", "symbol"], how="inner"
+        ).sort(["symbol", "end_time"])
 
-        return self.__class__(result.data, f"ts_beta({self.name},{other.name},{window})")
+        nan_y = (pl.col("factor").is_null() | pl.col("factor").is_nan()).cast(pl.Int64)
+        nan_x = (pl.col("factor_x").is_null() | pl.col("factor_x").is_nan()).cast(pl.Int64)
+        nan_in_window = (
+            (nan_x + nan_y)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .cast(pl.Int64)
+            .fill_null(1)
+        )
+
+        mean_x = pl.col("factor_x").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        mean_y = pl.col("factor").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        mean_xy = (
+            (pl.col("factor_x") * pl.col("factor")).rolling_mean(window_size=window, min_samples=window).over("symbol")
+        )
+
+        cov_xy = (mean_xy - (mean_x * mean_y)) * pl.lit(window / (window - 1))
+        std_x = pl.col("factor_x").rolling_std(window_size=window, min_samples=window, ddof=1).over("symbol")
+        var_x = std_x * std_x
+
+        beta_expr = pl.when(var_x.abs() <= EPSILON).then(pl.lit(None)).otherwise(cov_xy / var_x)
+        beta_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(beta_expr)
+
+        result_lf = joined.with_columns(beta_expr.alias("factor")).drop("factor_x")
+        return self.__class__(result_lf, f"ts_beta({self.name},{other.name},{window})")
 
     def ts_alpha(self, other: Self, window: int) -> Self:
         """
@@ -261,7 +446,7 @@ class TimeSeriesOpsMixin:
         beta = self.ts_beta(other, window)
         alpha = self.ts_mean(window) - beta * other.ts_mean(window)
 
-        return self.__class__(alpha.data, f"ts_alpha({self.name},{other.name},{window})")
+        return self.__class__(alpha._lf, f"ts_alpha({self.name},{other.name},{window})")
 
     def ts_resid(self, other: Self, window: int) -> Self:
         """
@@ -276,102 +461,120 @@ class TimeSeriesOpsMixin:
 
         result = self - (alpha + beta * other)
 
-        return self.__class__(result.data, f"ts_resid({self.name},{other.name},{window})")
+        return self.__class__(result._lf, f"ts_resid({self.name},{other.name},{window})")
 
     def ts_corr(self, other: Self, window: int) -> Self:
+        """Rolling correlation using strict NaN semantics (pure Polars)."""
         self._validate_window(window)
         self._validate_factor(other, "ts_corr")
 
-        merged = pd.merge(self._data, other.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
+        if window < 2:
+            result_lf = self._lf.with_columns(pl.lit(None).alias("factor"))
+            return self.__class__(result_lf, f"ts_corr({self.name},{other.name},{window})")
 
-        if merged.empty:
-            raise ValueError("No common data between factors")
+        joined = self._lf.join(
+            other._lf.rename({"factor": "factor_y"}), on=["start_time", "end_time", "symbol"], how="inner"
+        ).sort(["symbol", "end_time"])
 
-        def safe_corr(group):
-            x = group["factor_x"]
-            y = group["factor_y"]
+        nan_x = (pl.col("factor").is_null() | pl.col("factor").is_nan()).cast(pl.Int64)
+        nan_y = (pl.col("factor_y").is_null() | pl.col("factor_y").is_nan()).cast(pl.Int64)
+        nan_in_window = (
+            (nan_x + nan_y)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .cast(pl.Int64)
+            .fill_null(1)
+        )
 
-            valid_mask = x.notna() & y.notna()
-            if valid_mask.sum() < 2:
-                return pd.Series(np.nan, index=group.index)
+        mean_x = pl.col("factor").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        mean_y = pl.col("factor_y").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        mean_xy = (
+            (pl.col("factor") * pl.col("factor_y")).rolling_mean(window_size=window, min_samples=window).over("symbol")
+        )
 
-            if x[valid_mask].std() == 0 or y[valid_mask].std() == 0:
-                return pd.Series(np.nan, index=group.index)
+        cov_xy = (mean_xy - (mean_x * mean_y)) * pl.lit(window / (window - 1))
+        std_x = pl.col("factor").rolling_std(window_size=window, min_samples=window, ddof=1).over("symbol")
+        std_y = pl.col("factor_y").rolling_std(window_size=window, min_samples=window, ddof=1).over("symbol")
 
-            # Rolling corr/cov returns a matrix for each window; extract the cross-correlation/covariance
-            # by selecting every other row (factor_x rows) and the second column (correlation with factor_y)
-            corr_result = group[["factor_x", "factor_y"]].rolling(window, min_periods=window).corr().iloc[0::2, 1]
-            corr_result.index = group.index
-            return corr_result
+        corr_expr = pl.when((std_x <= EPSILON) | (std_y <= EPSILON))
+        corr_expr = corr_expr.then(pl.lit(None)).otherwise(cov_xy / (std_x * std_y))
+        corr_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(corr_expr)
 
-        result = merged.copy()
-        result["factor"] = np.nan
-        for symbol, group in result.groupby("symbol"):
-            result.loc[group.index, "factor"] = safe_corr(group).values
-
-        result = result[["start_time", "end_time", "symbol", "factor"]]
-        return self.__class__(result, f"ts_corr({self.name},{other.name},{window})")
+        result_lf = joined.with_columns(corr_expr.alias("factor")).drop("factor_y")
+        return self.__class__(result_lf, f"ts_corr({self.name},{other.name},{window})")
 
     def ts_cov(self, other: Self, window: int) -> Self:
+        """Rolling covariance using strict NaN semantics (pure Polars)."""
         self._validate_window(window)
         self._validate_factor(other, "ts_cov")
 
-        merged = pd.merge(self.data, other.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
+        if window < 2:
+            result_lf = self._lf.with_columns(pl.lit(None).alias("factor"))
+            return self.__class__(result_lf, f"ts_cov({self.name},{other.name},{window})")
 
-        if merged.empty:
-            raise ValueError("No common data between factors")
+        joined = self._lf.join(
+            other._lf.rename({"factor": "factor_y"}), on=["start_time", "end_time", "symbol"], how="inner"
+        ).sort(["symbol", "end_time"])
 
-        def safe_cov(group):
-            x = group["factor_x"]
-            y = group["factor_y"]
+        nan_x = (pl.col("factor").is_null() | pl.col("factor").is_nan()).cast(pl.Int64)
+        nan_y = (pl.col("factor_y").is_null() | pl.col("factor_y").is_nan()).cast(pl.Int64)
+        nan_in_window = (
+            (nan_x + nan_y)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .cast(pl.Int64)
+            .fill_null(1)
+        )
 
-            valid_mask = x.notna() & y.notna()
-            if valid_mask.sum() < 2:
-                return pd.Series(np.nan, index=group.index)
+        mean_x = pl.col("factor").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        mean_y = pl.col("factor_y").rolling_mean(window_size=window, min_samples=window).over("symbol")
+        mean_xy = (
+            (pl.col("factor") * pl.col("factor_y")).rolling_mean(window_size=window, min_samples=window).over("symbol")
+        )
 
-            # Rolling corr/cov returns a matrix for each window; extract the cross-correlation/covariance
-            # by selecting every other row (factor_x rows) and the second column (correlation with factor_y)
-            cov_result = group[["factor_x", "factor_y"]].rolling(window, min_periods=window).cov().iloc[0::2, 1]
-            cov_result.index = group.index
-            return cov_result
+        cov_expr = (mean_xy - (mean_x * mean_y)) * pl.lit(window / (window - 1))
+        cov_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(cov_expr)
 
-        result = merged.copy()
-        result["factor"] = np.nan
-        for symbol, group in result.groupby("symbol"):
-            result.loc[group.index, "factor"] = safe_cov(group).values
-
-        result = result[["start_time", "end_time", "symbol", "factor"]]
-        return self.__class__(result, f"ts_cov({self.name},{other.name},{window})")
+        result_lf = joined.with_columns(cov_expr.alias("factor")).drop("factor_y")
+        return self.__class__(result_lf, f"ts_cov({self.name},{other.name},{window})")
 
     def ts_cv(self, window: int) -> Self:
         """
-        Coefficient of Variation
+        Coefficient of Variation (pure Polars)
+        CV = std(x) / |mean(x)|
         """
         self._validate_window(window)
 
-        result = self._data.copy()
+        # Create NaN-in-window mask
+        nan_in_window = (
+            (pl.col("factor").is_null() | pl.col("factor").is_nan())
+            .cast(pl.Int64)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .fill_null(1)
+        )
 
-        def cv_vectorized(group):
-            vals = group.values
-            n = len(vals)
-            out = np.full(n, np.nan)
+        # Calculate std and mean
+        std_expr = pl.col("factor").rolling_std(window_size=window, min_samples=window, ddof=1).over("symbol")
+        mean_expr = pl.col("factor").rolling_mean(window_size=window, min_samples=window).over("symbol")
 
-            for i in range(window - 1, n):
-                w = vals[i - window + 1 : i + 1]
+        # CV = std / |mean| with epsilon to avoid division by zero
+        cv_expr = std_expr / (mean_expr.abs() + 1e-10)
 
-                if np.isnan(w).any() or len(w) < window:
-                    continue
+        # Apply NaN mask and handle inf
+        cv_expr = (
+            pl.when(nan_in_window > 0)
+            .then(pl.lit(None))
+            .when(cv_expr.is_infinite())
+            .then(pl.lit(None))
+            .otherwise(cv_expr)
+        )
 
-                mean_val = np.mean(w)
-                std_val = np.std(w, ddof=1)
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"]).with_columns(cv_expr.alias("factor")).sort(["end_time", "symbol"])
+        )
 
-                out[i] = std_val / (abs(mean_val) + 1e-10)
-
-            return pd.Series(out, index=group.index)
-
-        result["factor"] = result.groupby("symbol", group_keys=False)["factor"].apply(cv_vectorized)
-        result["factor"] = self._replace_inf(result["factor"])
-        return self.__class__(result, f"ts_cv({self.name},{window})")
+        return self.__class__(result_lf, f"ts_cv({self.name},{window})")
 
     def ts_jumpiness(self, window: int) -> Self:
         """
@@ -382,8 +585,10 @@ class TimeSeriesOpsMixin:
         total_jump = diff.ts_sum(window)
         range_val = self.ts_max(window) - self.ts_min(window)
         result = total_jump / (range_val + 1e-10)
-        result.data["factor"] = self._replace_inf(result.data["factor"])
-        return self.__class__(result, f"ts_jumpiness({self.name},{window})")
+        result._lf = result._lf.with_columns(
+            pl.col("factor").replace(float("inf"), None).replace(float("-inf"), None).alias("factor")
+        )
+        return self.__class__(result._lf, f"ts_jumpiness({self.name},{window})")
 
     def ts_autocorr(self, window: int, lag: int = 1) -> Self:
         self._validate_window(window)
@@ -392,32 +597,52 @@ class TimeSeriesOpsMixin:
 
         lagged_factor = self.ts_shift(lag)
         result = self.ts_corr(lagged_factor, window)
-        return self.__class__(result, f"ts_autocorr({self.name},{window},{lag})")
+        return self.__class__(result._lf, f"ts_autocorr({self.name},{window},{lag})")
 
     def ts_reversal_count(self, window: int) -> Self:
+        """Count sign reversals in a rolling window (pure Polars).
+
+        A reversal occurs when consecutive differences change sign.
+        Returns the ratio of reversals to possible reversals in the window.
+        """
         self._validate_window(window)
 
-        def count_reversals(s):
-            if len(s) < 3:
-                return np.nan
-            diff = np.diff(s)
-            if len(diff) < 2:
-                return np.nan
-            valid_diff = diff[~np.isnan(diff)]
-            if len(valid_diff) < 2:
-                return np.nan
-            sign_changes = ((valid_diff[1:] * valid_diff[:-1]) < 0).sum()
-            return sign_changes / (len(valid_diff) - 1)
+        if window < 3:
+            # Need at least 3 values to have 2 diffs and 1 possible reversal
+            result_lf = self._lf.with_columns(pl.lit(None).alias("factor"))
+            return self.__class__(result_lf, f"ts_reversal_count({self.name},{window})")
 
-        result = self._data.copy()
-        result["factor"] = (
-            result.groupby("symbol")["factor"]
-            .rolling(window, min_periods=3)
-            .apply(count_reversals, raw=True)
-            .reset_index(level=0, drop=True)
+        # Create NaN-in-window mask (need to check the original factor column)
+        nan_in_window = (
+            (pl.col("factor").is_null() | pl.col("factor").is_nan())
+            .cast(pl.Int64)
+            .rolling_max(window_size=window, min_samples=window)
+            .over("symbol")
+            .fill_null(1)
         )
 
-        return self.__class__(result, f"ts_reversal_count({self.name},{window})")
+        # Calculate diff within each symbol group
+        diff_expr = pl.col("factor").diff().over("symbol")
+
+        # Sign change indicator: (diff[i] * diff[i-1]) < 0
+        # Need to shift the diff within symbol group
+        sign_change_expr = ((diff_expr * diff_expr.shift(1).over("symbol")) < 0).cast(pl.Int64)
+
+        # Rolling sum of sign changes
+        # For window=N, we have N-1 diffs, and N-2 sign change opportunities
+        reversal_sum_expr = sign_change_expr.rolling_sum(window_size=window - 2, min_samples=window - 2).over("symbol")
+
+        # Normalize by window - 2 (number of possible reversals)
+        reversal_rate_expr = reversal_sum_expr / pl.lit(window - 2)
+
+        # Apply NaN mask
+        result_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(reversal_rate_expr)
+
+        result_lf = (
+            self._lf.sort(["symbol", "end_time"]).with_columns(result_expr.alias("factor")).sort(["end_time", "symbol"])
+        )
+
+        return self.__class__(result_lf, f"ts_reversal_count({self.name},{window})")
 
     def ts_vr(self, window: int, k: int = 2) -> Self:
         """
@@ -435,5 +660,7 @@ class TimeSeriesOpsMixin:
         var_k = k_diff.ts_std(window) ** 2
         var_1 = one_diff.ts_std(window) ** 2
         result = var_k / (k * var_1 + 1e-10)
-        result.data["factor"] = self._replace_inf(result.data["factor"])
-        return self.__class__(result, f"ts_vr({self.name},{window},{k})")
+        result._lf = result._lf.with_columns(
+            pl.col("factor").replace(float("inf"), None).replace(float("-inf"), None).alias("factor")
+        )
+        return self.__class__(result._lf, f"ts_vr({self.name},{window},{k})")

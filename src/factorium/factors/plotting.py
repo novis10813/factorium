@@ -33,7 +33,7 @@ class FactorPlotter:
             factor: Factor object to plot
         """
         self.factor = factor
-        self.data = factor.data  # DataFrame with start_time, end_time, symbol, factor
+        self.data = factor.to_pandas()  # DataFrame with start_time, end_time, symbol, factor
 
     def _filter_data(
         self,

@@ -5,11 +5,15 @@ import re
 import numpy as np
 import pandas as pd
 
-SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
+from ..constants import (
+    EPSILON,
+    MAX_PERIODS_PER_YEAR,
+    MIN_PERIODS_PER_YEAR,
+    SECONDS_PER_YEAR,
+)
 
-POSITION_EPSILON = 1e-10
-MIN_PERIODS_PER_YEAR = 1.0
-MAX_PERIODS_PER_YEAR = 365.25 * 24 * 60
+# Backward compatibility alias
+POSITION_EPSILON = EPSILON
 
 
 def parse_frequency_to_seconds(freq: str) -> float:

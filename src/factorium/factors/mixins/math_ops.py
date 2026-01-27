@@ -1,6 +1,6 @@
-import pandas as pd
-import numpy as np
+import polars as pl
 
+from math import nan
 from typing import Optional, Union
 
 try:
@@ -8,99 +8,87 @@ try:
 except ImportError:
     from typing_extensions import Self
 
+from ...constants import EPSILON
+
 
 class MathOpsMixin:
     def abs(self) -> Self:
-        result = self._data.copy()
-        result["factor"] = np.abs(result["factor"])
-        return self.__class__(result, f"abs({self.name})")
+        result_lf = self._lf.with_columns(pl.col("factor").abs().alias("factor"))
+        return self.__class__(result_lf, f"abs({self.name})")
 
     def sign(self) -> Self:
-        result = self._data.copy()
-        result["factor"] = np.sign(result["factor"])
-        return self.__class__(result, f"sign({self.name})")
+        result_lf = self._lf.with_columns(pl.col("factor").sign().alias("factor"))
+        return self.__class__(result_lf, f"sign({self.name})")
 
     def inverse(self) -> Self:
-        result = self._data.copy()
-        result["factor"] = np.where(result["factor"] != 0, 1 / result["factor"], np.nan)
-        return self.__class__(result, f"inverse({self.name})")
+        result_lf = self._lf.with_columns(
+            pl.when(pl.col("factor").abs() <= EPSILON)
+            .then(pl.lit(None))
+            .otherwise(1 / pl.col("factor"))
+            .alias("factor")
+        )
+        return self.__class__(result_lf, f"inverse({self.name})")
 
     def log(self, base: Optional[float] = None) -> Self:
-        result = self.data.copy()
-        vals = result["factor"]
-        mask = vals > 0
-
         if base is None:
-            log_vals = np.log(vals[mask])
+            result_lf = self._lf.with_columns(
+                pl.when(pl.col("factor") > 0).then(pl.col("factor").log()).otherwise(None).alias("factor")
+            )
             name = f"log({self.name})"
         else:
             if base <= 0 or base == 1:
                 raise ValueError(f"Invalid log base: {base}. Base must be greater than 0 and not equal to 1.")
-            log_vals = np.log(vals[mask]) / np.log(base)
+            # Use log change of base formula: log_b(x) = ln(x) / ln(b)
+            # Calculate ln(base) using Polars expression
+            result_lf = self._lf.with_columns(
+                pl.when(pl.col("factor") > 0)
+                .then(pl.col("factor").log() / pl.lit(base).log())
+                .otherwise(None)
+                .alias("factor")
+            )
             name = f"log({self.name},{base})"
-
-        result["factor"] = np.nan
-        result.loc[mask, "factor"] = log_vals
-        return self.__class__(result, name)
+        return self.__class__(result_lf, name)
 
     def ln(self) -> Self:
         return self.log()
 
     def sqrt(self) -> Self:
-        result = self._data.copy()
-        with np.errstate(invalid="ignore"):
-            result["factor"] = np.where(result["factor"] > 0, np.sqrt(result["factor"]), np.nan)
-        return self.__class__(result, f"sqrt({self.name})")
+        result_lf = self._lf.with_columns(
+            pl.when(pl.col("factor") > 0).then(pl.col("factor").sqrt()).otherwise(None).alias("factor")
+        )
+        return self.__class__(result_lf, f"sqrt({self.name})")
 
     def signed_log1p(self) -> Self:
-        result = self._data.copy()
-        result["factor"] = np.sign(result["factor"]) * np.log1p(np.abs(result["factor"]))
-        return self.__class__(result, f"signed_log1p({self.name})")
+        result_lf = self._lf.with_columns((pl.col("factor").sign() * pl.col("factor").abs().log1p()).alias("factor"))
+        return self.__class__(result_lf, f"signed_log1p({self.name})")
 
     def signed_pow(self, exponent: Union[Self, float]) -> Self:
         if isinstance(exponent, self.__class__):
-            merged = pd.merge(self._data, exponent.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
-
-            sign = np.sign(merged["factor_x"])
-            abs_val = np.abs(merged["factor_x"])
-
-            with np.errstate(divide="ignore", invalid="ignore"):
-                result_val = sign * (abs_val ** merged["factor_y"])
-
-            merged["factor"] = self._replace_inf(result_val)
-
-            result = merged[["start_time", "end_time", "symbol", "factor"]]
-
+            # Factor-factor path
+            result_lf = self._lf.join(exponent._lf, on=["start_time", "end_time", "symbol"], suffix="_exp")
+            result_lf = result_lf.with_columns(
+                (pl.col("factor").sign() * pl.col("factor").abs().pow(pl.col("factor_exp"))).alias("factor")
+            )
+            result_lf = result_lf.select(["start_time", "end_time", "symbol", "factor"])
+            return self.__class__(result_lf, f"signed_pow({self.name},{exponent})")
         else:
-            result = self._data.copy()
-
-            sign = np.sign(result["factor"])
-            abs_val = np.abs(result["factor"])
-
-            with np.errstate(divide="ignore", invalid="ignore"):
-                result_val = sign * (abs_val**exponent)
-
-            result["factor"] = self._replace_inf(result_val)
-
-        return self.__class__(result, f"signed_pow({self.name},{exponent})")
+            # Scalar path
+            result_lf = self._lf.with_columns(
+                (pl.col("factor").sign() * pl.col("factor").abs().pow(pl.lit(exponent))).alias("factor")
+            )
+            return self.__class__(result_lf, f"signed_pow({self.name},{exponent})")
 
     def pow(self, exponent: Union[Self, float]) -> Self:
         if isinstance(exponent, self.__class__):
-            merged = pd.merge(self._data, exponent.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
-
-            with np.errstate(divide="ignore", invalid="ignore"):
-                merged["factor"] = merged["factor_x"] ** merged["factor_y"]
-
-            merged["factor"] = self._replace_inf(merged["factor"])
-
-            result = merged[["start_time", "end_time", "symbol", "factor"]]
+            # Factor-factor path
+            result_lf = self._lf.join(exponent._lf, on=["start_time", "end_time", "symbol"], suffix="_exp")
+            result_lf = result_lf.with_columns(pl.col("factor").pow(pl.col("factor_exp")).alias("factor"))
+            result_lf = result_lf.select(["start_time", "end_time", "symbol", "factor"])
+            return self.__class__(result_lf, f"pow({self.name},{exponent})")
         else:
-            result = self._data.copy()
-            with np.errstate(divide="ignore", invalid="ignore"):
-                result["factor"] = result["factor"] ** exponent
-
-            result["factor"] = self._replace_inf(result["factor"])
-        return self.__class__(result, f"pow({self.name},{exponent})")
+            # Scalar path
+            result_lf = self._lf.with_columns(pl.col("factor").pow(pl.lit(exponent)).alias("factor"))
+            return self.__class__(result_lf, f"pow({self.name},{exponent})")
 
     def add(self, other: Union[Self, float]) -> Self:
         return self.__add__(other)
@@ -114,48 +102,58 @@ class MathOpsMixin:
     def div(self, other: Union[Self, float]) -> Self:
         return self.__truediv__(other)
 
-    def where(self, cond: Self, other: Union[Self, float] = np.nan) -> Self:
+    def where(self, cond: Self, other: Union[Self, float] = nan) -> Self:
         if not isinstance(cond, self.__class__):
             raise ValueError(f"Condition must be a Factor, got {type(cond)}")
 
-        merged = pd.merge(self._data, cond.data, on=["start_time", "end_time", "symbol"], suffixes=("", "_cond"))
-
-        cond_bool = merged["factor_cond"].fillna(False).astype(bool)
+        result_lf = self._lf.join(cond._lf, on=["start_time", "end_time", "symbol"], suffix="_cond")
 
         if isinstance(other, self.__class__):
-            merged = pd.merge(
-                merged, other.data.rename(columns={"factor": "factor_other"}), on=["start_time", "end_time", "symbol"]
+            result_lf = result_lf.join(other._lf, on=["start_time", "end_time", "symbol"], suffix="_other")
+            result_lf = result_lf.with_columns(
+                pl.when(pl.col("factor_cond").is_not_null() & (pl.col("factor_cond") != 0))
+                .then(pl.col("factor"))
+                .otherwise(pl.col("factor_other"))
+                .alias("factor")
+            )
+        else:
+            result_lf = result_lf.with_columns(
+                pl.when(pl.col("factor_cond").is_not_null() & (pl.col("factor_cond") != 0))
+                .then(pl.col("factor"))
+                .otherwise(pl.lit(other))
+                .alias("factor")
             )
 
-            merged["factor"] = np.where(cond_bool, merged["factor"], merged["factor_other"])
-
-        else:
-            merged["factor"] = np.where(cond_bool, merged["factor"], other)
-
-        result = merged[["start_time", "end_time", "symbol", "factor"]]
-        return self.__class__(result, f"where({self.name})")
+        result_lf = result_lf.select(["start_time", "end_time", "symbol", "factor"])
+        return self.__class__(result_lf, f"where({self.name})")
 
     def max(self, other: Union[Self, float]) -> Self:
         if isinstance(other, self.__class__):
-            merged = pd.merge(self._data, other.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
-
-            merged["factor"] = np.maximum(merged["factor_x"], merged["factor_y"])
-
-            result = merged[["start_time", "end_time", "symbol", "factor"]]
+            # Factor-factor path
+            result_lf = self._lf.join(other._lf, on=["start_time", "end_time", "symbol"], suffix="_other")
+            result_lf = result_lf.with_columns(
+                pl.max_horizontal(pl.col("factor"), pl.col("factor_other")).alias("factor")
+            )
+            result_lf = result_lf.select(["start_time", "end_time", "symbol", "factor"])
+            return self.__class__(result_lf, f"max({self.name},{other})")
         else:
-            result = self._data.copy()
-            result["factor"] = np.maximum(result["factor"], other)
-        return self.__class__(result, f"max({self.name},{other})")
+            # Scalar path
+            result_lf = self._lf.with_columns(pl.max_horizontal(pl.col("factor"), pl.lit(other)).alias("factor"))
+            return self.__class__(result_lf, f"max({self.name},{other})")
 
     def min(self, other: Union[Self, float]) -> Self:
         if isinstance(other, self.__class__):
-            merged = pd.merge(self._data, other.data, on=["start_time", "end_time", "symbol"], suffixes=("_x", "_y"))
-            merged["factor"] = np.minimum(merged["factor_x"], merged["factor_y"])
-            result = merged[["start_time", "end_time", "symbol", "factor"]]
+            # Factor-factor path
+            result_lf = self._lf.join(other._lf, on=["start_time", "end_time", "symbol"], suffix="_other")
+            result_lf = result_lf.with_columns(
+                pl.min_horizontal(pl.col("factor"), pl.col("factor_other")).alias("factor")
+            )
+            result_lf = result_lf.select(["start_time", "end_time", "symbol", "factor"])
+            return self.__class__(result_lf, f"min({self.name},{other})")
         else:
-            result = self._data.copy()
-            result["factor"] = np.minimum(result["factor"], other)
-        return self.__class__(result, f"min({self.name},{other})")
+            # Scalar path
+            result_lf = self._lf.with_columns(pl.min_horizontal(pl.col("factor"), pl.lit(other)).alias("factor"))
+            return self.__class__(result_lf, f"min({self.name},{other})")
 
     def reverse(self) -> Self:
         return self.__neg__()

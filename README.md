@@ -458,6 +458,7 @@ complex_factor = Factor.from_expression(
 ```
 
 表達式解析器支援：
+
 - 函數調用：`ts_delta(close, 20)`、`rank(momentum)` 等
 - 變數引用：`close`、`volume`（從 context 解析）
 - 數值常數：整數和浮點數

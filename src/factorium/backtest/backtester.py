@@ -80,6 +80,9 @@ class Backtester:
         self.frequency = frequency
         self._periods_per_year = frequency_to_periods_per_year(frequency)
 
+        self._signal_df = self.signal.to_pandas()
+        self._prices_df = self.prices.data
+
         if isinstance(transaction_cost, (int, float)):
             self.cost_rates = (float(transaction_cost), float(transaction_cost))
         else:
@@ -96,23 +99,23 @@ class Backtester:
         if self.entry_price not in self.prices.cols:
             raise ValueError(f"entry_price '{self.entry_price}' not found in prices")
 
-        signal_times = set(self.signal.data["end_time"].unique())
-        price_times = set(self.prices.data["end_time"].unique())
+        signal_times = set(self._signal_df["end_time"].unique())
+        price_times = set(self._prices_df["end_time"].unique())
         common_times = signal_times & price_times
 
         if len(common_times) < 2:
             raise ValueError("signal and prices must have at least 2 common timestamps")
 
     def _get_common_timestamps(self) -> np.ndarray:
-        signal_times = set(self.signal.data["end_time"].unique())
-        price_times = set(self.prices.data["end_time"].unique())
+        signal_times = set(self._signal_df["end_time"].unique())
+        price_times = set(self._prices_df["end_time"].unique())
         common = sorted(signal_times & price_times)
         return np.array(common)
 
     def _prepare_data_access(self) -> None:
-        for t, group in self.prices.data.groupby("end_time"):
+        for t, group in self._prices_df.groupby("end_time"):
             self._price_map[int(t)] = group.set_index("symbol")[self.entry_price]  # type: ignore[arg-type]
-        for t, group in self.signal.data.groupby("end_time"):
+        for t, group in self._signal_df.groupby("end_time"):
             self._signal_map[int(t)] = group.set_index("symbol")["factor"]  # type: ignore[arg-type]
 
     def _get_prices_at(self, timestamp: int) -> pd.Series:

@@ -15,7 +15,7 @@ def emulate_ts_op(factor: Factor, window: int, pandas_func: str) -> pd.Series:
     """
     Generic time-series rolling helper.
     """
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
 
     rolled = (
         df.groupby("symbol")["factor"]
@@ -29,7 +29,7 @@ def emulate_ts_op(factor: Factor, window: int, pandas_func: str) -> pd.Series:
 
 
 def emulate_ts_product(factor: Factor, window: int) -> pd.Series:
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
 
     def safe_prod(s: pd.Series) -> float:
         return np.nan if s.isna().any() else s.prod()
@@ -48,7 +48,7 @@ def emulate_ts_rank(factor: Factor, window: int) -> pd.Series:
     """
     Emulates TimeSeriesOpsMixin.ts_rank logic.
     """
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     out = np.full(len(df), np.nan)
 
     for _, group_idx in df.groupby("symbol").groups.items():
@@ -71,7 +71,7 @@ def emulate_ts_argminmax(factor: Factor, window: int, is_min: bool) -> pd.Series
     """
     Emulates ts_argmin / ts_argmax.
     """
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     out = np.full(len(df), np.nan)
 
     for _, group_idx in df.groupby("symbol").groups.items():
@@ -89,22 +89,22 @@ def emulate_ts_argminmax(factor: Factor, window: int, is_min: bool) -> pd.Series
 
 
 def emulate_ts_step(factor: Factor, start: int = 1) -> pd.Series:
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     return df.groupby("symbol").cumcount() + start
 
 
 def emulate_ts_shift(factor: Factor, period: int) -> pd.Series:
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     return df.groupby("symbol")["factor"].shift(period)
 
 
 def emulate_ts_delta(factor: Factor, period: int) -> pd.Series:
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     return df.groupby("symbol")["factor"].diff(period)
 
 
 def emulate_ts_scale(factor: Factor, window: int, constant: float = 0.0) -> pd.Series:
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     grouped = df.groupby("symbol")
 
     mins = grouped["factor"].transform(lambda s: s.rolling(window=window, min_periods=window).min())
@@ -116,7 +116,7 @@ def emulate_ts_scale(factor: Factor, window: int, constant: float = 0.0) -> pd.S
 
 
 def emulate_ts_zscore(factor: Factor, window: int) -> pd.Series:
-    df = factor.data.copy()
+    df = factor.to_pandas().copy()
     grouped = df.groupby("symbol")
 
     means = grouped["factor"].transform(lambda s: s.rolling(window=window, min_periods=window).mean())
@@ -191,7 +191,7 @@ def test_ts_mean_window_larger_than_length(sample_aggbar: AggBar):
     fac = Factor(df, name="x")
     window = len(df) + 5
     res = fac.ts_mean(window)
-    assert res.data["factor"].isna().all()
+    assert res.to_pandas()["factor"].isna().all()
 
 
 def test_ts_std_constant_series(sample_aggbar: AggBar):
@@ -200,7 +200,7 @@ def test_ts_std_constant_series(sample_aggbar: AggBar):
     fac = Factor(df, name="const")
     window = 3
     res = fac.ts_std(window)
-    assert (res.data["factor"].fillna(0) == 0).all()
+    assert (res.to_pandas()["factor"].fillna(0) == 0).all()
 
 
 def test_ts_rank_with_nan_in_window(sample_aggbar: AggBar):
@@ -211,7 +211,7 @@ def test_ts_rank_with_nan_in_window(sample_aggbar: AggBar):
     fac = Factor(df, name="close_nan")
     window = 3
     res = fac.ts_rank(window)
-    assert res.data["factor"].isna().any()
+    assert res.to_pandas()["factor"].isna().any()
 
 
 # ==========================================
@@ -347,11 +347,12 @@ def test_ts_beta(ts_ops_mixin_factory):
     result = f2.ts_beta(f1, window=3)
 
     # First 2 should be NaN due to window
-    assert np.isnan(result.data["factor"].iloc[0])
-    assert np.isnan(result.data["factor"].iloc[1])
-    assert np.isclose(result.data["factor"].iloc[2], 2.0)
-    assert np.isclose(result.data["factor"].iloc[3], 2.0)
-    assert np.isclose(result.data["factor"].iloc[4], 2.0)
+    result_series = result.to_pandas()["factor"]
+    assert np.isnan(result_series.iloc[0])
+    assert np.isnan(result_series.iloc[1])
+    assert np.isclose(result_series.iloc[2], 2.0)
+    assert np.isclose(result_series.iloc[3], 2.0)
+    assert np.isclose(result_series.iloc[4], 2.0)
 
 
 def test_ts_beta_basic(factor_close: Factor):
@@ -363,7 +364,7 @@ def test_ts_beta_basic(factor_close: Factor):
     # ts_beta(y, x, window) = Cov(y, x) / Var(x) = 2.0
     res = factor_y.ts_beta(factor_x, window)
 
-    df = factor_close.data.copy()
+    df = factor_close.to_pandas().copy()
     out = np.full(len(df), np.nan)
     for _, group_idx in df.groupby("symbol").groups.items():
         idx_arr = np.array(list(group_idx))
@@ -389,11 +390,12 @@ def test_ts_alpha(ts_ops_mixin_factory):
     result = f2.ts_alpha(f1, window=3)
 
     # First 2 should be NaN due to window
-    assert np.isnan(result.data["factor"].iloc[0])
-    assert np.isnan(result.data["factor"].iloc[1])
-    assert np.isclose(result.data["factor"].iloc[2], 5.0)
-    assert np.isclose(result.data["factor"].iloc[3], 5.0)
-    assert np.isclose(result.data["factor"].iloc[4], 5.0)
+    result_series = result.to_pandas()["factor"]
+    assert np.isnan(result_series.iloc[0])
+    assert np.isnan(result_series.iloc[1])
+    assert np.isclose(result_series.iloc[2], 5.0)
+    assert np.isclose(result_series.iloc[3], 5.0)
+    assert np.isclose(result_series.iloc[4], 5.0)
 
 
 def test_ts_alpha_nan_handling(ts_ops_mixin_factory):
@@ -412,7 +414,7 @@ def test_ts_alpha_nan_handling(ts_ops_mixin_factory):
     # t=2: [1,2,nan]
     # t=3: [2,nan,4]
     # t=4: [nan,4,5]
-    assert result.data["factor"].isna().all()
+    assert result.to_pandas()["factor"].isna().all()
 
     # Case where NaN is at the beginning, so some windows become valid
     s1 = pd.Series([np.nan, 2.0, 3.0, 4.0, 5.0], index=pd.date_range("2020-01-01", periods=5))
@@ -425,11 +427,12 @@ def test_ts_alpha_nan_handling(ts_ops_mixin_factory):
     # t=2: [nan,2,3] -> NaN
     # t=3: [2,3,4] -> OK
     # t=4: [3,4,5] -> OK
-    assert np.isnan(result.data["factor"].iloc[0])
-    assert np.isnan(result.data["factor"].iloc[1])
-    assert np.isnan(result.data["factor"].iloc[2])
-    assert not np.isnan(result.data["factor"].iloc[3])
-    assert not np.isnan(result.data["factor"].iloc[4])
+    result_series = result.to_pandas()["factor"]
+    assert np.isnan(result_series.iloc[0])
+    assert np.isnan(result_series.iloc[1])
+    assert np.isnan(result_series.iloc[2])
+    assert not np.isnan(result_series.iloc[3])
+    assert not np.isnan(result_series.iloc[4])
 
 
 def test_ts_resid(ts_ops_mixin_factory):
@@ -445,7 +448,8 @@ def test_ts_resid(ts_ops_mixin_factory):
     result = f2.ts_resid(f1, window=3)
 
     # First 2 should be NaN due to window
-    assert np.isnan(result.data["factor"].iloc[0])
-    assert np.isnan(result.data["factor"].iloc[1])
+    result_series = result.to_pandas()["factor"]
+    assert np.isnan(result_series.iloc[0])
+    assert np.isnan(result_series.iloc[1])
     # Resid should be 0.0
-    assert np.allclose(result.data["factor"].iloc[2:], 0.0, atol=1e-10)
+    assert np.allclose(result_series.iloc[2:], 0.0, atol=1e-10)
