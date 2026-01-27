@@ -79,7 +79,7 @@ ranked = momentum.rank()
 
 ### BinanceDataLoader - 資料載入器
 
-`BinanceDataLoader` 提供同步介面，從 Binance Vision 載入歷史市場資料。若本地檔案不存在，會自動下載。
+`BinanceDataLoader` 提供同步介面，從 Binance Vision 載入歷史市場資料並聚合成 K 棒。若本地檔案不存在，會自動下載。
 
 #### 基本用法
 
@@ -94,60 +94,42 @@ loader = BinanceDataLoader(
 )
 ```
 
-#### 載入資料
+#### 載入資料 (load_aggbar)
+
+`load_aggbar` 是主要的資料載入方法，支援多標的、多種 bar 類型：
 
 ```python
-# 載入期貨交易資料 (USDT 本位)
-df = loader.load_data(
-    symbol="BTCUSDT",
-    data_type="aggTrades",      # trades / klines / aggTrades
-    market_type="futures",      # spot / futures
-    futures_type="um",          # um (USDT本位) / cm (幣本位)
+from factorium import BinanceDataLoader
+
+loader = BinanceDataLoader()
+
+# 載入多標的資料，直接返回 AggBar
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT", "ETHUSDT", "BNBUSDT"],  # 多個標的
+    data_type="aggTrades",       # trades / klines / aggTrades
+    market_type="futures",       # spot / futures
+    futures_type="um",           # um (USDT本位) / cm (幣本位)
     start_date="2024-01-01",
-    end_date="2024-01-07"
+    days=7,                      # 或使用 end_date
+    bar_type="time",             # time / tick / volume / dollar
+    interval=60_000,             # 1 分鐘（毫秒）
 )
 
-# 或使用天數
-df = loader.load_data(
-    symbol="ETHUSDT",
-    data_type="trades",
-    market_type="futures",
-    futures_type="um",
-    start_date="2024-01-01",
-    days=30
-)
-
-# 載入現貨資料
-df = loader.load_data(
-    symbol="BTCUSDT",
-    data_type="klines",
-    market_type="spot",
-    start_date="2024-01-01",
-    days=7
-)
-
-# 強制重新下載
-df = loader.load_data(
-    symbol="BTCUSDT",
-    data_type="aggTrades",
-    market_type="futures",
-    futures_type="um",
-    start_date="2024-01-01",
-    days=7,
-    force_download=True
-)
-
-# 只讀取特定欄位
-df = loader.load_data(
-    symbol="BTCUSDT",
-    data_type="trades",
-    market_type="futures",
-    futures_type="um",
-    start_date="2024-01-01",
-    days=7,
-    columns=["time", "price", "qty"]
-)
+# 直接使用
+close = agg['close']
+momentum = close.ts_delta(20) / close.ts_shift(20)
 ```
+
+#### Bar 類型
+
+| bar_type | interval 參數 | 說明 |
+|----------|--------------|------|
+| `time` | 毫秒 | 固定時間間隔（如 60_000 = 1分鐘） |
+| `tick` | tick 數量 | 固定 tick 數量形成一根 K 棒 |
+| `volume` | 成交量 | 固定成交量形成一根 K 棒 |
+| `dollar` | 金額 | 固定成交金額形成一根 K 棒 |
+
+> **注意**：`tick`、`volume`、`dollar` 類型目前僅支援單一標的。
 
 #### 資料類型說明
 
@@ -156,6 +138,21 @@ df = loader.load_data(
 | `trades` | 逐筆成交 | id, price, qty, time, is_buyer_maker |
 | `aggTrades` | 聚合成交 | agg_trade_id, price, quantity, first_trade_id, last_trade_id, transact_time, is_buyer_maker |
 | `klines` | K 線資料 | open_time, open, high, low, close, volume, ... |
+
+#### 快取機制
+
+`load_aggbar` 內建快取機制，可避免重複聚合已處理過的資料：
+
+```python
+# 使用快取（預設）
+agg = loader.load_aggbar(..., use_cache=True)
+
+# 停用快取（強制重新聚合）
+agg = loader.load_aggbar(..., use_cache=False)
+
+# 強制重新下載原始資料
+agg = loader.load_aggbar(..., force_download=True)
+```
 
 #### 命令列工具
 
@@ -170,47 +167,6 @@ python -m factorium.utils.fetch -s BTCUSDT -t aggTrades -m futures -f um -r 2024
 
 # 下載現貨 K 線資料
 python -m factorium.utils.fetch -s BTCUSDT -t klines -m spot -r 2024-01-01:2024-01-31
-```
-
-#### 載入多標的資料（load_aggbar）
-
-`load_aggbar` 方法可以一次載入多個標的的資料，自動建立 K 棒並返回 `AggBar` 物件：
-
-```python
-from factorium import BinanceDataLoader
-
-loader = BinanceDataLoader()
-
-# 一次載入多個標的，直接返回 AggBar
-agg = loader.load_aggbar(
-    symbols=["BTCUSDT", "ETHUSDT", "BNBUSDT"],  # 多個標的
-    data_type="aggTrades",
-    market_type="futures",
-    futures_type="um",
-    start_date="2024-01-01",
-    days=7,
-    # TimeBar 參數
-    timestamp_col="transact_time",
-    price_col="price",
-    volume_col="quantity",
-    interval_ms=60_000  # 1 分鐘 K 棒
-)
-
-# 直接使用
-close = agg['close']
-momentum = close.ts_delta(20) / close.ts_shift(20)
-```
-
-這個方法等同於：
-
-```python
-# 手動方式
-bars = []
-for symbol in ["BTCUSDT", "ETHUSDT", "BNBUSDT"]:
-    df = loader.load_data(symbol=symbol, ...)
-    bar = TimeBar(df, ...)
-    bars.append(bar)
-agg = AggBar(bars)
 ```
 
 ---
@@ -687,27 +643,54 @@ print(rsi.data.tail(20))
 ### 範例 3：使用不同 Bar 類型
 
 ```python
-from factorium import BinanceDataLoader, TimeBar, TickBar, VolumeBar, DollarBar, AggBar
+from factorium import BinanceDataLoader
 
 loader = BinanceDataLoader()
-df = loader.load_data(
-    symbol="BTCUSDT",
+
+# 比較不同取樣方法（非 time bar 僅支援單一標的）
+time_bar = loader.load_aggbar(
+    symbols=["BTCUSDT"],
     data_type="trades",
-    market_type="futures", 
+    market_type="futures",
     futures_type="um",
     start_date="2024-01-01",
-    days=1
+    days=1,
+    bar_type="time",
+    interval=60_000,  # 1 分鐘
 )
 
-# 比較不同取樣方法
-time_bar = TimeBar(df, timestamp_col="time", price_col="price", 
-                   volume_col="qty", interval_ms=60_000)
-tick_bar = TickBar(df, timestamp_col="time", price_col="price",
-                   volume_col="qty", interval_ticks=1000)
-volume_bar = VolumeBar(df, timestamp_col="time", price_col="price",
-                       volume_col="qty", interval_volume=100)
-dollar_bar = DollarBar(df, timestamp_col="time", price_col="price",
-                       volume_col="qty", interval_dollar=1_000_000)
+tick_bar = loader.load_aggbar(
+    symbols=["BTCUSDT"],
+    data_type="trades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=1,
+    bar_type="tick",
+    interval=1000,  # 每 1000 筆成交
+)
+
+volume_bar = loader.load_aggbar(
+    symbols=["BTCUSDT"],
+    data_type="trades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=1,
+    bar_type="volume",
+    interval=100,  # 每 100 BTC
+)
+
+dollar_bar = loader.load_aggbar(
+    symbols=["BTCUSDT"],
+    data_type="trades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=1,
+    bar_type="dollar",
+    interval=1_000_000,  # 每 100 萬 USD
+)
 
 print(f"TimeBar: {len(time_bar)} bars")
 print(f"TickBar: {len(tick_bar)} bars")

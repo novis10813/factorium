@@ -14,6 +14,34 @@ import duckdb
 import pandas as pd
 import polars as pl
 
+
+def _run_async(coro):
+    """
+    Run an async coroutine, handling the case where an event loop is already running.
+
+    This is necessary for Jupyter notebooks which already have a running event loop.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop, use asyncio.run()
+        return asyncio.run(coro)
+
+    # There's a running loop (e.g., Jupyter), use nest_asyncio if available
+    try:
+        import nest_asyncio
+
+        nest_asyncio.apply()
+        return asyncio.run(coro)
+    except ImportError:
+        # Fall back to creating a new task in the existing loop
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result()
+
+
 from ..aggbar import AggBar
 from .adapters.binance import BinanceAdapter
 from .aggregator import BarAggregator
@@ -37,13 +65,15 @@ class BinanceDataLoader:
 
     Example:
         >>> loader = BinanceDataLoader()
-        >>> df = loader.load_data(
-        ...     symbol="BTCUSDT",
-        ...     data_type="trades",
+        >>> agg = loader.load_aggbar(
+        ...     symbols=["BTCUSDT"],
+        ...     data_type="aggTrades",
         ...     market_type="futures",
         ...     futures_type="um",
         ...     start_date="2024-01-01",
-        ...     days=7
+        ...     days=7,
+        ...     bar_type="time",
+        ...     interval=60_000,
         ... )
     """
 
@@ -67,133 +97,6 @@ class BinanceDataLoader:
         """Setup logging configuration."""
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
-
-    def load_data(
-        self,
-        symbol: str,
-        data_type: str,
-        market_type: str,
-        futures_type: str = "cm",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        days: Optional[int] = None,
-        columns: Optional[List[str]] = None,
-        force_download: bool = False,
-    ) -> pd.DataFrame:
-        """Deprecated: Use load_aggbar instead for aggregated bar data.
-
-        Load raw tick/trade data for specified parameters (synchronous interface).
-        For aggregated OHLCV bars, use load_aggbar() instead.
-
-        If local files are missing (or force_download=True), triggers automatic download.
-
-        Args:
-            symbol: Trading symbol
-            data_type: Data type (trades/klines/aggTrades)
-            market_type: Market type (spot/futures)
-            futures_type: Futures type (cm/um)
-            start_date: Start date (YYYY-MM-DD)
-            end_date: End date (YYYY-MM-DD)
-            days: Number of days to load
-            columns: Specific columns to return
-            force_download: Force re-download even if files exist
-
-        Returns:
-            DataFrame with loaded data
-
-        .. deprecated::
-            Use :meth:`load_aggbar` for aggregated bar data.
-        """
-        import warnings
-
-        warnings.warn(
-            "load_data is deprecated for aggregated bars, use load_aggbar instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        start_dt, end_dt = self._calculate_date_range(start_date, end_date, days)
-        resolved_start = start_dt.strftime("%Y-%m-%d")
-        resolved_end = end_dt.strftime("%Y-%m-%d")
-
-        if force_download or not self._check_all_files_exist(
-            symbol,
-            data_type,
-            market_type,
-            futures_type,
-            start_dt,
-            end_dt,
-        ):
-            asyncio.run(
-                self.downloader.download_data(
-                    symbol=symbol,
-                    data_type=data_type,
-                    market_type=market_type,
-                    futures_type=futures_type,
-                    start_date=resolved_start,
-                    end_date=resolved_end,
-                )
-            )
-            self.logger.info("Download completed.")
-
-        return self._read_data_duckdb(
-            symbol,
-            data_type,
-            market_type,
-            futures_type,
-            start_dt,
-            end_dt,
-            columns=columns,
-        )
-
-    def _read_data_duckdb(
-        self,
-        symbol: str,
-        data_type: str,
-        market_type: str,
-        futures_type: str,
-        start_dt: datetime,
-        end_dt: datetime,
-        columns: Optional[List[str]] = None,
-    ) -> pd.DataFrame:
-        """Read Parquet files using DuckDB with Hive partitioning."""
-        market = get_market_string(market_type, futures_type)
-
-        # Build glob pattern for Parquet files
-        base_pattern = (
-            self.base_path / f"market={market}" / f"data_type={data_type}" / f"symbol={symbol}" / "**/*.parquet"
-        )
-
-        # Build column selection
-        col_str = ", ".join(columns) if columns else "*"
-
-        # Build date filter conditions
-        # We need to filter by year, month, day partitions
-        date_conditions = self._build_date_filter(start_dt, end_dt)
-
-        query = f"""
-            SELECT {col_str}
-            FROM read_parquet('{base_pattern}', hive_partitioning=true)
-            WHERE {date_conditions}
-            ORDER BY year, month, day
-        """
-
-        try:
-            result = duckdb.query(query).df()
-            if result.empty:
-                raise ValueError(f"No data found for {symbol} between {start_dt.date()} and {end_dt.date()}")
-            return result
-        except Exception as e:
-            self.logger.error(f"Error querying data: {e}")
-            raise
-
-    def _build_date_filter(self, start_dt: datetime, end_dt: datetime) -> str:
-        """Build SQL WHERE clause for date filtering on Hive partitions."""
-        # Hive partitions are read as VARCHAR, so we need to cast them to INTEGER
-        # Use composite condition for efficient filtering
-        start_val = start_dt.year * 10000 + start_dt.month * 100 + start_dt.day
-        end_val = end_dt.year * 10000 + end_dt.month * 100 + end_dt.day
-
-        return f"(CAST(year AS INTEGER) * 10000 + CAST(month AS INTEGER) * 100 + CAST(day AS INTEGER)) >= {start_val} AND (CAST(year AS INTEGER) * 10000 + CAST(month AS INTEGER) * 100 + CAST(day AS INTEGER)) < {end_val}"
 
     def _check_all_files_exist(
         self,
@@ -624,7 +527,7 @@ class BinanceDataLoader:
             self.logger.info(f"Downloading {total_ranges} date ranges for {total_symbols} symbols...")
             await asyncio.gather(*tasks)
 
-        asyncio.run(download_all())
+        _run_async(download_all())
 
     def _group_consecutive_dates(self, dates: list[datetime]) -> list[tuple[datetime, datetime]]:
         """Group consecutive dates into (start, end) ranges."""
@@ -675,4 +578,4 @@ class BinanceDataLoader:
             self.logger.info(f"Downloading {len(symbols)} symbols in parallel...")
             await asyncio.gather(*tasks)
 
-        asyncio.run(download_all())
+        _run_async(download_all())

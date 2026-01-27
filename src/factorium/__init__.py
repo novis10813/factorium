@@ -14,8 +14,16 @@ Usage:
 Example:
     >>> from factorium import AggBar, BinanceDataLoader
     >>> loader = BinanceDataLoader()
-    >>> df = loader.load_data(symbol="BTCUSDT", data_type="aggTrades", ...)
-    >>> agg = AggBar(df)
+    >>> agg = loader.load_aggbar(
+    ...     symbols=["BTCUSDT"],
+    ...     data_type="aggTrades",
+    ...     market_type="futures",
+    ...     futures_type="um",
+    ...     start_date="2024-01-01",
+    ...     days=7,
+    ...     bar_type="time",
+    ...     interval=60_000,
+    ... )
     >>> close = agg['close']
     >>> momentum = close.ts_delta(20) / close.ts_shift(20)
     >>> ranked = momentum.rank()
@@ -26,7 +34,7 @@ from .factors.base import BaseFactor
 from .aggbar import AggBar
 from .data import BinanceDataLoader
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Core classes

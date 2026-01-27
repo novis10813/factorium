@@ -1,4 +1,4 @@
-"""Tests for BinanceDataLoader.load_aggbar_fast method."""
+"""Tests for BinanceDataLoader.load_aggbar method with time bars."""
 
 import pytest
 import pandas as pd
@@ -53,22 +53,23 @@ def sample_hive_data():
         yield tmpdir
 
 
-class TestLoadAggbarFast:
-    """Tests for BinanceDataLoader.load_aggbar_fast method."""
+class TestLoadAggbarTimeBars:
+    """Tests for BinanceDataLoader.load_aggbar with time bars."""
 
     def test_returns_aggbar(self, sample_hive_data):
-        """Test that load_aggbar_fast returns AggBar instance."""
+        """Test that load_aggbar returns AggBar instance."""
         loader = BinanceDataLoader(base_path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
-            result = loader.load_aggbar_fast(
+            result = loader.load_aggbar(
                 symbols=["BTCUSDT"],
                 data_type="aggTrades",
                 market_type="futures",
                 futures_type="um",
                 start_date="2024-01-01",
                 days=3,
-                interval_ms=60_000,
+                bar_type="time",
+                interval=60_000,
                 use_cache=False,
             )
 
@@ -80,14 +81,15 @@ class TestLoadAggbarFast:
         loader = BinanceDataLoader(base_path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
-            result = loader.load_aggbar_fast(
+            result = loader.load_aggbar(
                 symbols=["BTCUSDT", "ETHUSDT"],
                 data_type="aggTrades",
                 market_type="futures",
                 futures_type="um",
                 start_date="2024-01-01",
                 days=3,
-                interval_ms=60_000,
+                bar_type="time",
+                interval=60_000,
                 use_cache=False,
             )
 
@@ -104,14 +106,15 @@ class TestLoadAggbarFast:
             MockCache.return_value = mock_cache_instance
 
             with patch.object(loader, "_check_all_symbols_exist", return_value=True):
-                loader.load_aggbar_fast(
+                loader.load_aggbar(
                     symbols=["BTCUSDT"],
                     data_type="aggTrades",
                     market_type="futures",
                     futures_type="um",
                     start_date="2024-01-01",
                     days=1,
-                    interval_ms=60_000,
+                    bar_type="time",
+                    interval=60_000,
                     use_cache=True,
                 )
 
@@ -146,14 +149,15 @@ class TestLoadAggbarFast:
                 MockAggregator.return_value = mock_agg_instance
 
                 with patch.object(loader, "_check_all_symbols_exist", return_value=True):
-                    result = loader.load_aggbar_fast(
+                    result = loader.load_aggbar(
                         symbols=["BTCUSDT"],
                         data_type="aggTrades",
                         market_type="futures",
                         futures_type="um",
                         start_date="2024-01-01",
                         days=1,
-                        interval_ms=60_000,
+                        bar_type="time",
+                        interval=60_000,
                         use_cache=True,
                     )
 
@@ -166,25 +170,27 @@ class TestLoadAggbarFast:
         loader = BinanceDataLoader(base_path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
-            result_1m = loader.load_aggbar_fast(
+            result_1m = loader.load_aggbar(
                 symbols=["BTCUSDT"],
                 data_type="aggTrades",
                 market_type="futures",
                 futures_type="um",
                 start_date="2024-01-01",
                 days=1,
-                interval_ms=60_000,
+                bar_type="time",
+                interval=60_000,
                 use_cache=False,
             )
 
-            result_5m = loader.load_aggbar_fast(
+            result_5m = loader.load_aggbar(
                 symbols=["BTCUSDT"],
                 data_type="aggTrades",
                 market_type="futures",
                 futures_type="um",
                 start_date="2024-01-01",
                 days=1,
-                interval_ms=300_000,
+                bar_type="time",
+                interval=300_000,
                 use_cache=False,
             )
 
@@ -196,14 +202,15 @@ class TestLoadAggbarFast:
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             with pytest.raises(ValueError, match="No data found"):
-                loader.load_aggbar_fast(
+                loader.load_aggbar(
                     symbols=["NONEXISTENT"],
                     data_type="aggTrades",
                     market_type="futures",
                     futures_type="um",
                     start_date="2024-01-01",
                     days=1,
-                    interval_ms=60_000,
+                    bar_type="time",
+                    interval=60_000,
                     use_cache=False,
                 )
 
@@ -269,14 +276,15 @@ class TestIncrementalDownload:
             mock_find.return_value = {"NEWCOIN": [datetime(2024, 1, 5)]}
             with patch.object(loader, "_download_missing_files") as mock_download:
                 with patch.object(loader, "_check_all_symbols_exist", return_value=True):
-                    loader.load_aggbar_fast(
+                    loader.load_aggbar(
                         symbols=["BTCUSDT"],
                         data_type="aggTrades",
                         market_type="futures",
                         futures_type="um",
                         start_date="2024-01-01",
                         days=3,
-                        interval_ms=60_000,
+                        bar_type="time",
+                        interval=60_000,
                         use_cache=False,
                     )
 
