@@ -34,7 +34,7 @@ from .factors.base import BaseFactor
 from .aggbar import AggBar
 from .data import BinanceDataLoader
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     # Core classes

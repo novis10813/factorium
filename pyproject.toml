@@ -1,6 +1,6 @@
 [project]
 name = "factorium"
-version = "0.2.0"
+version = "0.2.1"
 description = "A quantitative factor analysis library for financial research"
 readme = "README.md"
 requires-python = ">=3.11"
