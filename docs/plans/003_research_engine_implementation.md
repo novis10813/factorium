@@ -1,5 +1,15 @@
 # Research Engine Implementation Plan (Phase 0 + B + C)
 
+## Implementation Status (2026-01-28)
+
+All tasks from this plan have been implemented. Key implementation notes:
+
+1. **FactorAnalysisResult**: `analyze()` returns a structured dataclass, not dict
+2. **MaxPositionConstraint**: Added `normalize=True` option
+3. **WeightConstraint**: Strategy pattern (separate classes)
+4. **safe_divide**: Uses EPSILON threshold per AGENTS.md
+5. **Backtester**: Now alias for VectorizedBacktester
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 將回測系統重構為向量化 Polars 實作，並建立完整的因子研究工作流 API。

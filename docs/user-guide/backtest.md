@@ -777,9 +777,53 @@ backtest_result = bt.run()
 print(f"Sharpe: {backtest_result.metrics['sharpe_ratio']:.2f}")
 ```
 
+## 7. VectorizedBacktester (v2.0+)
+
+從 v2.0 開始，`Backtester` 預設使用基於 Polars 的向量化實作，效能顯著提升。
+
+### 7.1 基本用法
+
+```python
+from factorium.backtest import Backtester
+
+bt = Backtester(
+    prices=agg,
+    signal=signal,
+    initial_capital=10000.0,
+    neutralization="market",
+)
+result = bt.run()
+
+# 結果包含 Polars DataFrame
+print(result.equity_curve)
+
+# 如果需要 pandas 格式
+pandas_result = result.to_pandas()
+```
+
+### 7.2 使用權重約束 (Constraints)
+
+v2.0 引入了權重約束系統，支援在回測中加入各種限制。
+
+```python
+from factorium.backtest.constraints import MaxPositionConstraint
+
+# 限制單一標的最大權重為 10%，並重新歸一化以保持總權重
+constraints = [
+    MaxPositionConstraint(max_weight=0.1, normalize=True)
+]
+
+bt = Backtester(
+    prices=agg,
+    signal=signal,
+    constraints=constraints
+)
+result = bt.run()
+```
+
 ---
 
-## 7. 關鍵設計決策
+## 8. 關鍵設計決策
 
 ### 7.1 避免前視偏差
 
