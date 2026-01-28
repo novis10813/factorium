@@ -1,11 +1,14 @@
 import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 
 from factorium import AggBar, Factor
 from factorium.backtest import (
     Backtester,
     BacktestResult,
+    LegacyBacktester,
+    LegacyBacktestResult,
     Portfolio,
     VectorizedBacktester,
     calculate_metrics,
@@ -157,7 +160,7 @@ class TestBacktester:
                     }
                 )
 
-        df = pd.DataFrame(rows)
+        df = pl.DataFrame(rows)
         return AggBar(df)
 
     def test_basic_backtest(self, sample_data):
@@ -201,7 +204,8 @@ class TestBacktester:
         result = bt.run()
 
         assert len(result.trades) > 0
-        first_trade_ts = result.trades.iloc[0]["timestamp"]
+        # Vectorized result uses end_time instead of timestamp, and is Polars
+        first_trade_ts = result.trades["end_time"][0]
         first_signal_ts = signal.data["end_time"].min()
         assert first_trade_ts > first_signal_ts
 
@@ -209,6 +213,7 @@ class TestBacktester:
         signal = sample_data["close"].cs_rank()
 
         with pytest.raises(ValueError, match="entry_price"):
+            # Should raise during initialization
             Backtester(prices=sample_data, signal=signal, entry_price="invalid")
 
     def test_cost_rates_tuple(self, sample_data):
@@ -293,6 +298,7 @@ class TestEdgeCases:
         with pytest.raises(ValueError, match="periods_per_year"):
             calculate_metrics(returns, periods_per_year=1e10)
 
+
 class TestVectorizedBacktesterIntegration:
     """Integration tests comparing VectorizedBacktester with Backtester."""
 
@@ -320,7 +326,7 @@ class TestVectorizedBacktesterIntegration:
                     }
                 )
 
-        df = pd.DataFrame(rows)
+        df = pl.DataFrame(rows)
         return AggBar(df)
 
     def test_vectorized_vs_original_equity_curve(self, sample_data):
@@ -329,7 +335,7 @@ class TestVectorizedBacktesterIntegration:
         signal = close.cs_rank()
 
         # Run original backtester
-        bt_orig = Backtester(
+        bt_orig = LegacyBacktester(
             prices=sample_data,
             signal=signal,
             transaction_cost=0.0001,
@@ -350,7 +356,7 @@ class TestVectorizedBacktesterIntegration:
 
         # Compare final equity
         final_orig = result_orig.equity_curve.iloc[-1]
-        
+
         # Vectorized result is Polars
         final_vec = result_vec.equity_curve["total_value"].to_list()[-1]
 
@@ -364,6 +370,7 @@ class TestVectorizedBacktesterIntegration:
         result = bt.run()
 
         import polars as pl
+
         assert isinstance(result.equity_curve, pl.DataFrame)
         assert isinstance(result.returns, pl.DataFrame)
         assert isinstance(result.trades, pl.DataFrame)
@@ -383,3 +390,157 @@ class TestVectorizedBacktesterIntegration:
         assert abs(result_vec.metrics["sharpe_ratio"] - result_orig.metrics["sharpe_ratio"]) < 0.1
         # Compare total_return
         assert abs(result_vec.metrics["total_return"] - result_orig.metrics["total_return"]) < 0.01
+
+
+class TestBacktesterCashHandling:
+    def test_cash_never_negative(self):
+        # BTC starts cheap, becomes very expensive
+        # ETH stays cheap
+        dates = pd.date_range(start="2025-01-01", periods=10, freq="1h")
+        timestamps = dates.astype(np.int64) // 10**6
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol in ["BTC", "ETH"]:
+                if symbol == "BTC":
+                    price = 10.0 if i < 5 else 10000.0  # Price jumps 1000x
+                else:
+                    price = 10.0
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "open": price,
+                        "high": price,
+                        "low": price,
+                        "close": price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        df = pl.DataFrame(rows)
+        agg = AggBar(df)
+
+        # Signal always wants to buy BTC
+        signal = agg["close"].cs_rank()
+
+        bt = Backtester(
+            prices=agg,
+            signal=signal,
+            initial_capital=1000.0,  # Not enough for expensive BTC
+            neutralization="none",
+            transaction_cost=0.0,
+        )
+        result = bt.run()
+
+        # Should complete without error
+        assert isinstance(result, BacktestResult)
+        # Cash should never go negative
+        assert result.portfolio_history["cash"].min() >= -1e-10
+
+
+class TestMissingPriceHandling:
+    """Tests for handling missing prices."""
+
+    def test_missing_price_symbol_excluded_from_holdings(self):
+        """Symbols with missing prices should be excluded from target holdings."""
+        dates = pd.date_range(start="2025-01-01", periods=10, freq="1h")
+        timestamps = dates.astype(np.int64) // 10**6
+
+        rows = []
+        for i, ts in enumerate(timestamps):
+            # BTC has all prices
+            rows.append(
+                {
+                    "start_time": ts,
+                    "end_time": ts + 3600000,
+                    "symbol": "BTC",
+                    "open": 100.0,
+                    "high": 100.0,
+                    "low": 100.0,
+                    "close": 100.0,
+                    "volume": 1000.0,
+                }
+            )
+            # ETH only has prices for first 5 bars
+            if i < 5:
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": "ETH",
+                        "open": 50.0,
+                        "high": 50.0,
+                        "low": 50.0,
+                        "close": 50.0,
+                        "volume": 1000.0,
+                    }
+                )
+
+        df = pl.DataFrame(rows)
+        agg = AggBar(df)
+
+        # Signal includes both symbols
+        signal = agg["close"].cs_rank()
+
+        bt = Backtester(
+            prices=agg,
+            signal=signal,
+            neutralization="market",
+        )
+        result = bt.run()
+
+        # After bar 5, ETH should have no trades
+        eth_trades_after_5 = result.trades.filter(
+            (pl.col("symbol") == "ETH") & (pl.col("end_time") > timestamps[4] + 3600000)
+        )
+        assert len(eth_trades_after_5) == 0
+
+
+class TestLegacyBacktester:
+    """Tests for the legacy iterative backtester."""
+
+    @pytest.fixture
+    def sample_data(self):
+        dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
+        timestamps = dates.astype(np.int64) // 10**6
+
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol in ["BTC", "ETH"]:
+                base_price = 100.0 if symbol == "BTC" else 50.0
+                price = base_price * (1 + 0.01 * i + 0.005 * np.random.randn())
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "open": price * 0.99,
+                        "high": price * 1.01,
+                        "low": price * 0.98,
+                        "close": price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        df = pd.DataFrame(rows)
+        return AggBar(df)
+
+    def test_legacy_basic_backtest(self, sample_data):
+        close = sample_data["close"]
+        signal = close.cs_rank()
+
+        bt = LegacyBacktester(
+            prices=sample_data,
+            signal=signal,
+            transaction_cost=0.0001,
+            initial_capital=10000.0,
+            neutralization="market",
+        )
+
+        result = bt.run()
+
+        assert isinstance(result, LegacyBacktestResult)
+        assert len(result.equity_curve) > 0
+        assert len(result.returns) > 0
+        assert "sharpe_ratio" in result.metrics
