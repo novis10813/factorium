@@ -183,3 +183,21 @@ def test_plotting(sample_data):
     # Test plot_cumulative_returns
     fig_cum = analyzer.plot_cumulative_returns(quantiles=2, period=1)
     assert isinstance(fig_cum, mpl_figure.Figure)
+
+
+def test_analyze_returns_dataclass(sample_data):
+    """analyze() should return FactorAnalysisResult dataclass."""
+    from factorium.factors.analyzer import FactorAnalysisResult
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=1)
+
+    assert isinstance(result, FactorAnalysisResult)
+    assert result.factor_name == "my_factor"
+    assert result.periods == 1
+    assert "mean_ic" in result.ic_summary
+    assert hasattr(result, "to_dict")

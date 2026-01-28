@@ -4,10 +4,11 @@ Factor analysis and backtest report generation.
 Combines factor analysis and backtest results into comprehensive reports.
 """
 
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import Dict, Any, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .session import ResearchSession
+    from ..factors.analyzer import FactorAnalysisResult
 import polars as pl
 import pandas as pd
 
@@ -72,7 +73,7 @@ class FactorReport:
     def __init__(
         self,
         factor: Factor,
-        analysis: Dict[str, Any],
+        analysis: Union[Dict[str, Any], "FactorAnalysisResult"],
         backtest: BacktestResult,
     ):
         self.factor = factor
@@ -86,17 +87,27 @@ class FactorReport:
         Returns:
             Dictionary with factor name, IC summary, and backtest metrics
         """
+        if hasattr(self.analysis, "to_dict"):
+            analysis_dict = self.analysis.to_dict()
+        else:
+            analysis_dict = self.analysis
+
         return {
             "factor_name": self.factor.name,
-            "ic_summary": self.analysis.get("ic_summary", {}),
+            "ic_summary": analysis_dict.get("ic_summary", {}),
             "backtest_metrics": self.backtest.metrics,
         }
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert report to dictionary."""
+        if hasattr(self.analysis, "to_dict"):
+            analysis_dict = self.analysis.to_dict()
+        else:
+            analysis_dict = self.analysis
+
         return {
             "factor_name": self.factor.name,
-            "analysis": self.analysis,
+            "analysis": analysis_dict,
             "metrics": self.backtest.metrics,
             "equity_curve": self.backtest.equity_curve.to_dict(),
             "returns": self.backtest.returns.to_dict(),

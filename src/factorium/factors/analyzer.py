@@ -2,12 +2,58 @@ import pandas as pd
 import polars as pl
 import numpy as np
 import logging
-from typing import Union, List, Optional
+from dataclasses import dataclass
+from typing import Union, List, Optional, Dict, Any
 from .core import Factor
 from ..aggbar import AggBar
 import matplotlib.figure as mpl_figure
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FactorAnalysisResult:
+    """
+    Structured result from factor analysis.
+
+    Attributes:
+        factor_name: Name of the analyzed factor
+        periods: Analysis periods (forward return horizons)
+        quantiles: Number of quantiles used
+        ic_series: Information Coefficient time series
+        ic_summary: Summary statistics of IC (mean, std, ir, t-stat)
+        quantile_returns: Mean returns by quantile
+        cumulative_returns: Cumulative returns by quantile (if available)
+    """
+
+    factor_name: str
+    periods: int
+    quantiles: int
+    ic_series: pd.DataFrame
+    ic_summary: Dict[str, float]
+    quantile_returns: pd.DataFrame
+    cumulative_returns: Optional[pd.DataFrame] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for backward compatibility."""
+        return {
+            "factor_name": self.factor_name,
+            "periods": self.periods,
+            "quantiles": self.quantiles,
+            "ic_series": self.ic_series,
+            "ic_summary": self.ic_summary,
+            "quantile_returns": self.quantile_returns,
+            "cumulative_returns": self.cumulative_returns,
+        }
+
+    def __repr__(self) -> str:
+        ic = self.ic_summary
+        return f"""FactorAnalysisResult: {self.factor_name}
+  Periods: {self.periods}, Quantiles: {self.quantiles}
+  Mean IC: {ic.get("mean_ic", 0):.4f}
+  IC Std: {ic.get("ic_std", 0):.4f}
+  IC IR: {ic.get("ic_ir", 0):.4f}
+"""
 
 
 class FactorAnalyzer:
@@ -28,24 +74,47 @@ class FactorAnalyzer:
         else:
             self.prices = prices
 
-    def analyze(self, price_col: Optional[str] = None, periods: Optional[List[int]] = None) -> dict:
+    def analyze(self, price_col: str = "close", periods: int = 1) -> FactorAnalysisResult:
         """
-        Perform a standard analysis on the factor.
-
-        Args:
-            price_col: Optional price column name.
-            periods: Optional list of return periods.
+        Run full factor analysis.
 
         Returns:
-            dict: Analysis results containing IC summary and quantile returns.
+            FactorAnalysisResult with IC series, summary, and quantile returns
         """
-        self.prepare_data(price_col=price_col, periods=periods)
-        ic_summary = self.calculate_ic_summary()
-        quantile_returns = self.calculate_quantile_returns(quantiles=self.quantiles)
-        return {
-            "ic_summary": ic_summary,
-            "quantile_returns": quantile_returns,
+        # Prepare data
+        self.prepare_data(price_col=price_col, periods=[periods])
+
+        # Calculate IC
+        ic_series = self.calculate_ic()
+        ic_summary_df = self.calculate_ic_summary()
+
+        # Convert IC summary to dict for single period as expected by FactorAnalysisResult
+        col = f"period_{periods}"
+        ic_summary = {
+            "mean_ic": ic_summary_df.loc["mean", col] if col in ic_summary_df.columns else 0.0,
+            "ic_std": ic_summary_df.loc["std", col] if col in ic_summary_df.columns else 0.0,
+            "ic_ir": ic_summary_df.loc["ic_ir", col] if col in ic_summary_df.columns else 0.0,
+            "t-stat": ic_summary_df.loc["t-stat", col] if col in ic_summary_df.columns else 0.0,
         }
+
+        # Calculate quantile returns
+        quantile_returns = self.calculate_quantile_returns(quantiles=self.quantiles, period=periods)
+
+        # Calculate cumulative returns (optional)
+        try:
+            cumulative_returns = self.calculate_cumulative_returns(quantiles=self.quantiles, period=periods)
+        except Exception:
+            cumulative_returns = None
+
+        return FactorAnalysisResult(
+            factor_name=self.factor.name,
+            periods=periods,
+            quantiles=self.quantiles,
+            ic_series=ic_series,
+            ic_summary=ic_summary,
+            quantile_returns=quantile_returns,
+            cumulative_returns=cumulative_returns,
+        )
 
     def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pl.DataFrame:
         """

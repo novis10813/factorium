@@ -38,15 +38,17 @@ class TestResearchSessionMethods:
 
     def test_analyze_returns_result(self, sample_data):
         """analyze() should return FactorAnalysisResult."""
+        from factorium.factors import FactorAnalysisResult
+
         session = ResearchSession(sample_data)
         signal = session.factor("close").cs_rank()
 
         result = session.analyze(signal)
 
-        # FactorAnalyzer returns dict, not FactorAnalysisResult yet
-        assert result is not None
-        assert "ic_summary" in result
-        assert "quantile_returns" in result
+        assert isinstance(result, FactorAnalysisResult)
+        assert result.factor_name == "cs_rank"
+        assert result.ic_summary is not None
+        assert result.quantile_returns is not None
 
     def test_from_df_pandas(self):
         """from_df() should work with pandas DataFrame."""

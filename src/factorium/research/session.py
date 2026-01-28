@@ -159,8 +159,8 @@ class ResearchSession:
         factor: Factor,
         price_col: str = "close",
         quantiles: int = 5,
-        periods: Union[int, List[int]] = 1,
-    ) -> Dict[str, Any]:
+        periods: int = 1,
+    ) -> "FactorAnalysisResult":
         """
         Analyze factor using FactorAnalyzer.
 
@@ -171,29 +171,12 @@ class ResearchSession:
             periods: Forward return periods for analysis
 
         Returns:
-            Analysis results dictionary with IC, quantile returns, etc.
+            FactorAnalysisResult dataclass with IC and quantile analysis
         """
         from ..factors.analyzer import FactorAnalyzer
 
         analyzer = FactorAnalyzer(factor, self.data, quantiles=quantiles)
-
-        # Ensure periods is a list
-        period_list = [periods] if isinstance(periods, int) else periods
-        results = analyzer.analyze(price_col=price_col, periods=period_list)
-
-        # Flatten ic_summary if it's a single period for quick_report compatibility
-        if isinstance(periods, int) and "ic_summary" in results:
-            ic_df = results["ic_summary"]
-            if isinstance(ic_df, pd.DataFrame):
-                col = f"period_{periods}"
-                if col in ic_df.columns:
-                    results["ic_summary"] = {
-                        "mean_ic": ic_df.loc["mean", col],
-                        "ic_std": ic_df.loc["std", col],
-                        "ic_ir": ic_df.loc["ic_ir", col],
-                        "t-stat": ic_df.loc["t-stat", col],
-                    }
-        return results
+        return analyzer.analyze(price_col=price_col, periods=periods)
 
     def quick_report(
         self,
@@ -226,7 +209,7 @@ class ResearchSession:
         backtest = self.backtest(factor)
 
         # Format report
-        ic_summary = analysis.get("ic_summary", {})
+        ic_summary = analysis.ic_summary
         metrics = backtest.metrics
 
         report = f"""

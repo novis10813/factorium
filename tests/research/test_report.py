@@ -91,4 +91,8 @@ class TestFactorReport:
         assert isinstance(report, FactorReport)
         assert report.analysis is not None
         assert report.backtest is not None
-        assert "ic_summary" in report.analysis
+        # Check if it's FactorAnalysisResult or dict (backward compatibility)
+        if hasattr(report.analysis, "ic_summary"):
+            assert report.analysis.ic_summary is not None
+        else:
+            assert "ic_summary" in report.analysis

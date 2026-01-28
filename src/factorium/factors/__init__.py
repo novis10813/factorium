@@ -12,7 +12,7 @@ Exports:
 from .core import Factor
 from .base import BaseFactor
 from .parser import FactorExpressionParser
-from .analyzer import FactorAnalyzer
+from .analyzer import FactorAnalyzer, FactorAnalysisResult
 from .engine import PolarsEngine
 from .composite import CompositeFactor
 
@@ -24,6 +24,7 @@ __all__ = [
     "BaseFactor",
     "FactorExpressionParser",
     "FactorAnalyzer",
+    "FactorAnalysisResult",
     "PolarsEngine",
     "CompositeFactor",
     "operators",
