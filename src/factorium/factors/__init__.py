@@ -14,6 +14,7 @@ from .base import BaseFactor
 from .parser import FactorExpressionParser
 from .analyzer import FactorAnalyzer
 from .engine import PolarsEngine
+from .composite import CompositeFactor
 
 # Import all operators
 from . import operators
@@ -24,5 +25,6 @@ __all__ = [
     "FactorExpressionParser",
     "FactorAnalyzer",
     "PolarsEngine",
+    "CompositeFactor",
     "operators",
 ]
