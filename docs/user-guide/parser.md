@@ -245,7 +245,7 @@ complex_factor = Factor.from_expression(
 )
 
 # 等價於
-complex_chain = (close.ts_delta(20) / close.ts_std(20)).rank()
+complex_chain = (close.ts_delta(20) / close.ts_std(20)).cs_rank()
 ```
 
 ### 範例 3：使用中綴運算子
@@ -344,12 +344,12 @@ except ValueError as e:
 |--------|------------|
 | `ts_delta(close, 20)` | `close.ts_delta(20)` |
 | `ts_mean(close, 10)` | `close.ts_mean(10)` |
-| `rank(close)` | `close.rank()` |
+| `cs_rank(close)` | `close.cs_rank()` |
 | `abs(close)` | `close.abs()` |
 | `close + open` | `close + open` |
 | `close * 2` | `close * 2` |
 | `ts_delta(close, 20) / ts_shift(close, 20)` | `close.ts_delta(20) / close.ts_shift(20)` |
-| `rank(ts_mean(close, 10))` | `close.ts_mean(10).rank()` |
+| `cs_rank(ts_mean(close, 10))` | `close.ts_mean(10).cs_rank()` |
 
 ---
 

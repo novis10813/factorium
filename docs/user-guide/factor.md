@@ -135,7 +135,7 @@ market_return = returns.mean()
 excess_return = returns - market_return
 
 momentum = close.ts_delta(20) / close.ts_shift(20)
-momentum_rank = momentum.rank()
+momentum_rank = momentum.cs_rank()
 ```
 
 ---

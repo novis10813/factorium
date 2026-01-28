@@ -33,6 +33,7 @@ from .factors.core import Factor
 from .factors.base import BaseFactor
 from .aggbar import AggBar
 from .data import BinanceDataLoader
+from .research import ResearchSession
 
 __version__ = "0.2.1"
 
@@ -41,6 +42,7 @@ __all__ = [
     "Factor",
     "BaseFactor",
     "AggBar",
+    "ResearchSession",
     # Data loading
     "BinanceDataLoader",
 ]

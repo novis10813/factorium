@@ -41,20 +41,18 @@ Factorium 是一個專為量化研究設計的 Python 函式庫，提供高效�
 ## 快速開始
 
 ```python
-from factorium import AggBar, Factor
-from factorium.backtest import Backtester
+from factorium import ResearchSession
+import polars as pl
 
-# 載入數據
-agg = AggBar.from_parquet("data/btc_1h.parquet")
+# 1. 建立研究 Session（從 Parquet 檔案）
+session = ResearchSession.from_parquet("data/btc_1h.parquet")
 
-# 計算動量因子
-momentum = (agg["close"] / agg["close"].ts_shift(20) - 1).cs_rank()
+# 2. 建立簡單動量因子
+close = session.factor("close")
+momentum = (close.ts_delta(20) / close.ts_shift(20)).cs_rank()
 
-# 執行回測
-bt = Backtester(prices=agg, signal=momentum, neutralization="market")
-result = bt.run()
-
-print(result.metrics)
+# 3. 一行完成分析與回測（簡易報告）
+print(session.quick_report(momentum))
 ```
 
 ---
@@ -81,7 +79,8 @@ uv add factorium
 | [資料獲取](getting-started/data-acquisition.md) | 下載與載入市場數據 |
 | [Bar 聚合](user-guide/bar.md) | 不同類型的 K 線聚合 |
 | [Factor 因子](user-guide/factor.md) | 因子計算與運算子 |
-| [策略回測](user-guide/backtest.md) | 因子回測系統 |
+| [因子分析](user-guide/analyzer.md) | IC / 分層收益等分析工具 |
+| [策略回測](user-guide/backtest.md) | 向量化回測與權重約束 |
 
 ---
 

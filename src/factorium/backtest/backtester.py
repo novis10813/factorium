@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class BacktestResult:
+class IterativeBacktestResult:
     """Container for backtest results."""
 
     equity_curve: pd.Series
@@ -30,9 +32,9 @@ class BacktestResult:
     portfolio_history: pd.DataFrame
 
 
-class Backtester:
+class IterativeBacktester:
     """
-    Factor-based backtesting engine.
+    Factor-based backtesting engine (Iterative).
 
     Uses factor signals to generate position weights and simulates trading.
 
@@ -71,6 +73,12 @@ class Backtester:
         neutralization: Literal["market", "none"] = "market",
         frequency: str = "1h",
     ):
+        warnings.warn(
+            "IterativeBacktester is deprecated and will be removed in v2.0. "
+            "Use VectorizedBacktester instead for better performance.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.prices = prices
         self.signal = signal
         self.entry_price = entry_price
@@ -91,7 +99,7 @@ class Backtester:
         self._validate_inputs()
 
         self._portfolio: Optional[Portfolio] = None
-        self._result: Optional[BacktestResult] = None
+        self._result: Optional[IterativeBacktestResult] = None
         self._price_map: dict[Any, Any] = {}
         self._signal_map: dict[Any, Any] = {}
 
@@ -176,7 +184,7 @@ class Backtester:
 
         return orders
 
-    def run(self) -> BacktestResult:
+    def run(self) -> IterativeBacktestResult:
         self._portfolio = Portfolio(initial_capital=self.initial_capital)
 
         timestamps = self._get_common_timestamps()
@@ -231,7 +239,7 @@ class Backtester:
 
         return self._build_result()
 
-    def _build_result(self) -> BacktestResult:
+    def _build_result(self) -> IterativeBacktestResult:
         assert self._portfolio is not None
 
         history_df = self._portfolio.get_history_df()
@@ -248,7 +256,7 @@ class Backtester:
 
         metrics = calculate_metrics(returns, periods_per_year=self._periods_per_year)
 
-        self._result = BacktestResult(
+        self._result = IterativeBacktestResult(
             equity_curve=equity_curve,
             returns=returns,
             metrics=metrics,

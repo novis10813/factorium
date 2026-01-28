@@ -57,8 +57,8 @@ volume = agg["volume"]
 # 動量因子：過去 20 期報酬
 momentum = close.ts_delta(20) / close.ts_shift(20)
 
-# 波動率因子：過去 20 期標準差
-volatility = close.ts_pct_change().ts_std(20)
+# 波動率因子：過去 20 期標準差（使用百分比變化）
+volatility = (close.ts_delta(1) / close.ts_shift(1)).ts_std(20)
 
 # 橫截面排名（0~1 之間）
 momentum_rank = momentum.cs_rank()
@@ -68,52 +68,37 @@ print(momentum_rank.to_pandas().head())
 
 ---
 
-## 4. 因子分析
+## 4. 使用 ResearchSession 一次串好「因子 → 分析 → 回測」
 
 ```python
-from factorium import FactorAnalyzer
+from factorium import ResearchSession
 
-# 計算未來報酬
-forward_returns = agg["close"].ts_pct_change().ts_shift(-1)
+# 建立研究工作階段
+session = ResearchSession(agg)
 
-# 分析因子表現
-analyzer = FactorAnalyzer(
-    factor=momentum_rank,
-    forward_returns=forward_returns,
-    n_quantiles=5
-)
+# 建立因子（也可以用 expression string）
+momentum = session.create_factor("ts_delta(close, 20) / ts_shift(close, 20)", name="momentum")
+signal = momentum.cs_rank()
 
-print(analyzer.summary())
-analyzer.plot_quantile_returns()
-```
+# 快速分析（IC + 分層收益）
+analysis = session.analyze(signal, periods=1)
+print(analysis.ic_summary)
 
----
-
-## 5. 策略回測
-
-```python
-from factorium.backtest import Backtester
-
-# 建立回測器
-bt = Backtester(
-    prices=agg,
-    signal=momentum_rank,
-    neutralization="market",  # 市場中性
-    transaction_cost=0.0003,
-    initial_capital=100000
-)
-
-# 執行回測
-result = bt.run()
-
-# 查看結果
+# 執行向量化回測（預設使用 VectorizedBacktester）
+result = session.backtest(signal, neutralization="market")
 print(result.metrics)
-bt.plot_equity()
+```
+
+如需更精簡的文字報告，可以使用：
+
+```python
+report_text = session.quick_report(signal, periods=1)
+print(report_text)
 ```
 
 ---
 
-## 6. 不同類型的 Bar 聚合
+## 5. 不同類型的 Bar 聚合
 
 除了時間條，Factorium 也支援其他類型的 bar 聚合：
 
@@ -161,4 +146,5 @@ dollar_agg = loader.load_aggbar(
 
 - [Bar 聚合](../user-guide/bar.md) - 深入了解不同類型的 K 線
 - [Factor 因子](../user-guide/factor.md) - 完整的運算子列表
-- [策略回測](../user-guide/backtest.md) - 回測系統詳細說明
+- [因子分析](../user-guide/analyzer.md) - FactorAnalyzer / FactorAnalysisResult 詳細說明
+- [策略回測](../user-guide/backtest.md) - VectorizedBacktester 與權重約束
