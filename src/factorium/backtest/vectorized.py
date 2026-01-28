@@ -164,20 +164,9 @@ class VectorizedBacktester:
         """Calculate portfolio weights (cross-sectional)."""
         if self.neutralization == "market":
             # Market neutral: (signal - mean) / sum(|signal - mean|)
-            return df.with_columns(
-                [
-                    (
-                        (pl.col("prev_signal") - pl.col("prev_signal").mean().over("end_time"))
-                        / (pl.col("prev_signal") - pl.col("prev_signal").mean().over("end_time"))
-                        .abs()
-                        .sum()
-                        .over("end_time")
-                    )
-                    .fill_nan(0.0)
-                    .fill_null(0.0)
-                    .alias("weight")
-                ]
-            )
+            from .utils import neutralize_weights_polars
+
+            df = neutralize_weights_polars(df, "prev_signal", "end_time")
         else:  # long-only
             # Normalize positive signals to sum to 1
             positive_only = pl.when(pl.col("prev_signal") > 0).then(pl.col("prev_signal")).otherwise(0.0)

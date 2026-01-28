@@ -4,6 +4,7 @@ import re
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from ..constants import (
     EPSILON,
@@ -116,6 +117,38 @@ def normalize_weights(signals: pd.Series) -> pd.Series:
         return pd.Series(0.0, index=positive_signals.index)
 
     return pd.Series(positive_signals / total)
+
+
+def neutralize_weights_polars(
+    df: pl.DataFrame, signal_col: str = "signal", group_col: str = "end_time"
+) -> pl.DataFrame:
+    """
+    Neutralize weights to sum to zero (market neutral).
+
+    Polars version for use in vectorized backtester.
+
+    Args:
+        df: DataFrame with signal column
+        signal_col: Name of signal column
+        group_col: Column to group by (usually timestamp)
+
+    Returns:
+        DataFrame with 'weight' column added
+    """
+    # Demean signal
+    df = df.with_columns([(pl.col(signal_col) - pl.col(signal_col).mean().over(group_col)).alias("signal_demeaned")])
+
+    # Normalize by sum of absolute values
+    df = df.with_columns(
+        [
+            (pl.col("signal_demeaned") / pl.col("signal_demeaned").abs().sum().over(group_col))
+            .fill_nan(0.0)
+            .fill_null(0.0)
+            .alias("weight")
+        ]
+    )
+
+    return df.drop("signal_demeaned")
 
 
 def safe_divide(a: float, b: float, default: float = 0.0) -> float:
