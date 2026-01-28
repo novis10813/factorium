@@ -1,0 +1,278 @@
+"""Vectorized backtester using Polars for performance."""
+
+from dataclasses import dataclass
+from typing import Optional, Literal, Dict, Any, Union
+import numpy as np
+import pandas as pd
+import polars as pl
+
+from ..aggbar import AggBar
+from ..factors.core import Factor
+from ..constants import EPSILON
+from .utils import frequency_to_periods_per_year
+from .metrics import calculate_metrics
+
+
+@dataclass
+class BacktestResult:
+    """Results from a backtest run."""
+
+    equity_curve: pl.DataFrame  # columns: [end_time, total_value]
+    returns: pl.DataFrame  # columns: [end_time, return]
+    metrics: Dict[str, float]
+    trades: pl.DataFrame  # columns: [end_time, symbol, qty, price, cost]
+    portfolio_history: pl.DataFrame  # columns: [end_time, cash, market_value, total_value]
+
+    def to_pandas(self) -> "BacktestResultPandas":
+        """Convert all DataFrames to pandas for backward compatibility."""
+        return BacktestResultPandas(
+            equity_curve=self.equity_curve.to_pandas(),
+            returns=self.returns.to_pandas(),
+            metrics=self.metrics,
+            trades=self.trades.to_pandas(),
+            portfolio_history=self.portfolio_history.to_pandas(),
+        )
+
+
+@dataclass
+class BacktestResultPandas:
+    """Pandas version of BacktestResult for backward compatibility."""
+
+    equity_curve: pd.DataFrame
+    returns: pd.DataFrame
+    metrics: Dict[str, float]
+    trades: pd.DataFrame
+    portfolio_history: pd.DataFrame
+
+
+class VectorizedBacktester:
+    """Vectorized backtester using Polars for high performance."""
+
+    def __init__(
+        self,
+        prices: Union[AggBar, pl.DataFrame],
+        signal: Union[Factor, pl.DataFrame],
+        entry_price: str = "close",
+        transaction_cost: float = 0.0003,
+        initial_capital: float = 10000.0,
+        neutralization: Literal["market", "none"] = "market",
+        frequency: str = "1h",
+    ):
+        """
+        Initialize the vectorized backtester.
+
+        Args:
+            prices: AggBar or Polars DataFrame with OHLCV data
+            signal: Factor or Polars DataFrame with signals
+            entry_price: Column name in prices for execution price
+            transaction_cost: Transaction cost as % of notional
+            initial_capital: Starting portfolio value
+            neutralization: "market" for market neutral, "none" for long-only
+            frequency: Frequency string (e.g., "1h", "1d")
+        """
+        self.initial_capital = initial_capital
+        self.transaction_cost = transaction_cost
+        self.entry_price = entry_price
+        self.neutralization = neutralization
+        self.frequency = frequency
+        self.periods_per_year = frequency_to_periods_per_year(frequency)
+
+        # Convert inputs to Polars DataFrames
+        if isinstance(prices, AggBar):
+            self.prices_df = prices.to_polars()
+        else:
+            self.prices_df = prices
+
+        if isinstance(signal, Factor):
+            self.signal_df = signal.lazy.collect()
+        else:
+            self.signal_df = signal
+
+    def run(self) -> BacktestResult:
+        """
+        Run the backtest and return results.
+
+        Returns:
+            BacktestResult with equity_curve, returns, and metrics
+        """
+        # Step 1: Prepare data
+        combined = self._prepare_data()
+
+        # Step 2: Calculate weights
+        combined = self._calculate_weights(combined)
+
+        # Step 3: Calculate positions
+        combined = self._calculate_positions(combined)
+
+        # Step 4: Calculate equity
+        portfolio_history = self._calculate_equity(combined)
+
+        # Step 5: Build result
+        return self._build_result(portfolio_history, combined)
+
+    def _prepare_data(self) -> pl.DataFrame:
+        """Merge prices and signals, shift signals to avoid lookahead bias."""
+        # Get the entry price column
+        prices_df = self.prices_df.select(["end_time", "symbol", self.entry_price]).rename({self.entry_price: "price"})
+
+        # Prepare signal data
+        signal_df = self.signal_df.select(["end_time", "symbol", "factor"]).rename({"factor": "signal"})
+
+        # Join on end_time and symbol
+        combined = prices_df.join(signal_df, on=["end_time", "symbol"], how="left")
+
+        # Shift signal by 1 per symbol to use previous signal (avoid lookahead bias)
+        combined = combined.with_columns([pl.col("signal").shift(1).over("symbol").alias("prev_signal")]).drop("signal")
+
+        # Sort for stable processing
+        combined = combined.sort(["end_time", "symbol"])
+
+        return combined
+
+    def _calculate_weights(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Calculate portfolio weights (cross-sectional)."""
+        if self.neutralization == "market":
+            # Market neutral: (signal - mean) / sum(|signal - mean|)
+            return df.with_columns(
+                [
+                    (
+                        (pl.col("prev_signal") - pl.col("prev_signal").mean().over("end_time"))
+                        / (pl.col("prev_signal") - pl.col("prev_signal").mean().over("end_time"))
+                        .abs()
+                        .sum()
+                        .over("end_time")
+                    )
+                    .fill_nan(0.0)
+                    .fill_null(0.0)
+                    .alias("weight")
+                ]
+            )
+        else:  # long-only
+            # Normalize positive signals to sum to 1
+            positive_only = pl.when(pl.col("prev_signal") > 0).then(pl.col("prev_signal")).otherwise(0.0)
+            return df.with_columns(
+                [(positive_only / positive_only.sum().over("end_time")).fill_nan(0.0).fill_null(0.0).alias("weight")]
+            )
+
+    def _calculate_positions(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Calculate target quantities and trades."""
+        # Target quantity: weight * capital / price
+        df = df.with_columns([(pl.col("weight") * self.initial_capital / pl.col("price")).alias("target_qty")])
+
+        # Previous quantity (from previous time period)
+        df = df.with_columns([pl.col("target_qty").shift(1).over("symbol").fill_null(0.0).alias("prev_qty")])
+
+        # Trade quantity
+        df = df.with_columns([(pl.col("target_qty") - pl.col("prev_qty")).alias("trade_qty")])
+
+        # Trade cost
+        df = df.with_columns(
+            [(pl.col("trade_qty").abs() * pl.col("price") * self.transaction_cost).alias("trade_cost")]
+        )
+
+        return df
+
+    def _calculate_equity(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Calculate portfolio equity over time."""
+        # Aggregate to time level
+        equity = (
+            df.group_by("end_time")
+            .agg(
+                [
+                    # Market value of holdings
+                    (pl.col("target_qty") * pl.col("price")).sum().alias("market_value"),
+                    # Total transaction costs
+                    pl.col("trade_cost").sum().alias("total_trade_cost"),
+                    # Net buy amount (negative = sold)
+                    (pl.col("trade_qty") * pl.col("price")).sum().alias("net_buy"),
+                ]
+            )
+            .sort("end_time")
+        )
+
+        # Cumulative calculations
+        equity = (
+            equity.with_columns(
+                [
+                    # Cumulative costs
+                    pl.col("total_trade_cost").cum_sum().alias("cumulative_costs"),
+                    # Cumulative net buys
+                    pl.col("net_buy").cum_sum().alias("cumulative_buys"),
+                ]
+            )
+            .with_columns(
+                [
+                    # Cash: capital - costs - net buys
+                    (self.initial_capital - pl.col("cumulative_costs") - pl.col("cumulative_buys")).alias("cash"),
+                ]
+            )
+            .with_columns(
+                [
+                    # Total value: cash + market value
+                    (pl.col("cash") + pl.col("market_value")).alias("total_value")
+                ]
+            )
+        )
+
+        return equity.select(["end_time", "cash", "market_value", "total_value"])
+
+    def _calculate_metrics(self, equity_history: pl.DataFrame) -> Dict[str, float]:
+        """Calculate performance metrics."""
+        # Convert to pandas for metrics calculation
+        equity_pd = equity_history.to_pandas()
+
+        # Calculate period returns
+        equity_pd["return"] = equity_pd["total_value"].pct_change()
+
+        # Calculate metrics
+        returns_series = equity_pd["return"].dropna()
+
+        if len(returns_series) < 2:
+            return {
+                "total_return": 0.0,
+                "annual_return": 0.0,
+                "sharpe_ratio": 0.0,
+                "max_drawdown": 0.0,
+            }
+
+        metrics = calculate_metrics(
+            returns_series,
+            risk_free_rate=0.0,
+            periods_per_year=self.periods_per_year,
+        )
+
+        return metrics
+
+    def _build_result(
+        self,
+        portfolio_history: pl.DataFrame,
+        combined_df: pl.DataFrame,
+    ) -> BacktestResult:
+        """Assemble final result."""
+        # Equity curve: just end_time and total_value
+        equity_curve = portfolio_history.select(["end_time", "total_value"])
+
+        # Returns
+        returns = (
+            portfolio_history.select(["end_time", "total_value"])
+            .with_columns([pl.col("total_value").pct_change().alias("return")])
+            .select(["end_time", "return"])
+        )
+
+        # Trades
+        trades = (
+            combined_df.select(["end_time", "symbol", "trade_qty", "price", "trade_cost"])
+            .rename({"trade_qty": "qty"})
+            .filter(pl.col("qty") != 0)
+        )
+
+        # Calculate metrics
+        metrics = self._calculate_metrics(portfolio_history)
+
+        return BacktestResult(
+            equity_curve=equity_curve,
+            returns=returns,
+            metrics=metrics,
+            trades=trades,
+            portfolio_history=portfolio_history,
+        )

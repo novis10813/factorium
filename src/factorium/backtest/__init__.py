@@ -1,4 +1,5 @@
 from .backtester import Backtester, BacktestResult
+from .vectorized import VectorizedBacktester, BacktestResult as VectorizedBacktestResult
 from .metrics import calculate_metrics
 from .portfolio import Portfolio
 from .utils import (
@@ -14,6 +15,8 @@ from .utils import (
 __all__ = [
     "Backtester",
     "BacktestResult",
+    "VectorizedBacktester",
+    "VectorizedBacktestResult",
     "Portfolio",
     "calculate_metrics",
     "frequency_to_periods_per_year",
