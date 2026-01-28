@@ -64,6 +64,52 @@ class ResearchSession:
         aggbar = AggBar.from_df(df)
         return cls(aggbar, **kwargs)
 
+    @classmethod
+    def from_df(cls, df: Union[pd.DataFrame, pl.DataFrame], **kwargs) -> "ResearchSession":
+        """Create ResearchSession from DataFrame."""
+        aggbar = AggBar.from_df(df)
+        return cls(aggbar, **kwargs)
+
+    @classmethod
+    def load(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+        """
+        Auto-detect format and load data.
+
+        Supports: .csv, .parquet
+        """
+        path = Path(path)
+        if path.suffix == ".csv":
+            return cls.from_csv(path, **kwargs)
+        elif path.suffix == ".parquet":
+            return cls.from_parquet(path, **kwargs)
+        else:
+            raise ValueError(f"Unsupported file format: {path.suffix}")
+
+    def analyze(
+        self,
+        factor: Factor,
+        quantiles: int = 5,
+    ) -> "FactorAnalysisResult":
+        """
+        Analyze factor using FactorAnalyzer.
+
+        Args:
+            factor: Factor to analyze
+            quantiles: Number of quantiles for grouping
+
+        Returns:
+            FactorAnalysisResult with IC, autocorr, etc.
+
+        Example:
+            >>> signal = session.factor("close").cs_rank()
+            >>> analysis = session.analyze(signal)
+            >>> print(analysis.ic_summary)
+        """
+        from ..factors.analyzer import FactorAnalyzer
+
+        analyzer = FactorAnalyzer(factor, self.data, quantiles=quantiles)
+        return analyzer.analyze()
+
     def factor(self, column: str) -> Factor:
         """
         Create a Factor from a column in the data.
