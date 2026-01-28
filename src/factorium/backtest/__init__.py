@@ -5,7 +5,13 @@ from .backtester import (
 from .metrics import calculate_metrics
 from .portfolio import Portfolio
 from .vectorized import VectorizedBacktester, BacktestResult
-from .constraints import WeightConstraint, MaxPositionConstraint, LongOnlyConstraint
+from .constraints import (
+    WeightConstraint,
+    MaxPositionConstraint,
+    LongOnlyConstraint,
+    MaxGrossExposureConstraint,
+    MarketNeutralConstraint,
+)
 from .utils import (
     MAX_PERIODS_PER_YEAR,
     MIN_PERIODS_PER_YEAR,
@@ -30,6 +36,8 @@ __all__ = [
     "WeightConstraint",
     "MaxPositionConstraint",
     "LongOnlyConstraint",
+    "MaxGrossExposureConstraint",
+    "MarketNeutralConstraint",
     "frequency_to_periods_per_year",
     "neutralize_weights",
     "normalize_weights",
