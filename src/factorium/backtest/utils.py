@@ -1,6 +1,7 @@
 """Utility functions for backtesting."""
 
 import re
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -151,18 +152,54 @@ def neutralize_weights_polars(
     return df.drop("signal_demeaned")
 
 
-def safe_divide(a: float, b: float, default: float = 0.0) -> float:
+def safe_divide(
+    a: Union[float, np.ndarray, pd.Series],
+    b: Union[float, np.ndarray, pd.Series],
+    default: float = np.nan,
+) -> Union[float, np.ndarray, pd.Series]:
     """
-    Safe division that avoids division by zero.
+    Safe division that returns default when denominator is near zero.
+
+    Uses EPSILON threshold per AGENTS.md safe_ function pattern.
 
     Args:
         a: Numerator
         b: Denominator
-        default: Value to return if b is zero or NaN
+        default: Value to return if b is zero, NaN, or within EPSILON
 
     Returns:
-        a / b if b is valid, else default
+        a/b, or default where |b| <= EPSILON
     """
-    if b == 0 or np.isnan(b):
-        return default
+    # Handle scalar
+    if isinstance(b, (int, float, np.floating, np.integer)):
+        if np.isnan(b) or abs(b) <= EPSILON:
+            return default
+        return a / b
+
+    # Handle numpy array
+    if isinstance(b, np.ndarray):
+        # We need to handle 'a' potentially being an array or scalar too
+        # np.where handles this correctly
+        result = np.where(
+            np.isnan(b) | (np.abs(b) <= EPSILON),
+            default,
+            a / np.where(np.abs(b) <= EPSILON, 1.0, b),  # Avoid divide by zero
+        )
+        return result
+
+    # Handle pandas Series
+    if isinstance(b, pd.Series):
+        mask = b.isna() | (b.abs() <= EPSILON)
+        result = a / b.where(~mask, 1.0)  # Replace near-zero with 1 to avoid error
+        result = result.where(~mask, default)  # Then set result to default
+        return result
+
+    # Fallback
+    try:
+        if b == 0 or np.isnan(b):
+            return default
+    except (ValueError, TypeError):
+        # Handle cases where b might be an array-like but not caught by above checks
+        pass
+
     return a / b
