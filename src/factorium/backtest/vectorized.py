@@ -57,6 +57,7 @@ class VectorizedBacktester:
         initial_capital: float = 10000.0,
         neutralization: Literal["market", "none"] = "market",
         frequency: str = "1h",
+        constraints: Optional[list] = None,
     ):
         """
         Initialize the vectorized backtester.
@@ -69,6 +70,7 @@ class VectorizedBacktester:
             initial_capital: Starting portfolio value
             neutralization: "market" for market neutral, "none" for long-only
             frequency: Frequency string (e.g., "1h", "1d")
+            constraints: List of WeightConstraint objects to apply
         """
         self.initial_capital = initial_capital
         self.transaction_cost = transaction_cost
@@ -76,6 +78,7 @@ class VectorizedBacktester:
         self.neutralization = neutralization
         self.frequency = frequency
         self.periods_per_year = frequency_to_periods_per_year(frequency)
+        self.constraints = constraints or []
 
         # Convert inputs to Polars DataFrames
         if isinstance(prices, AggBar):
@@ -150,9 +153,15 @@ class VectorizedBacktester:
         else:  # long-only
             # Normalize positive signals to sum to 1
             positive_only = pl.when(pl.col("prev_signal") > 0).then(pl.col("prev_signal")).otherwise(0.0)
-            return df.with_columns(
+            df = df.with_columns(
                 [(positive_only / positive_only.sum().over("end_time")).fill_nan(0.0).fill_null(0.0).alias("weight")]
             )
+
+        # Apply constraints
+        for constraint in self.constraints:
+            df = constraint.apply(df)
+
+        return df
 
     def _calculate_positions(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate target quantities and trades."""

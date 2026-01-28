@@ -279,3 +279,69 @@ class TestBackwardCompatibility:
         assert isinstance(pandas_result.equity_curve, pd.DataFrame)
         assert isinstance(pandas_result.returns, pd.DataFrame)
         assert isinstance(pandas_result.metrics, dict)
+
+
+class TestConstraintIntegration:
+    """Tests for constraint integration in VectorizedBacktester."""
+
+    @pytest.fixture
+    def sample_data(self):
+        from factorium import AggBar
+        import polars as pl
+
+        timestamps = list(range(1704067200000, 1704067200000 + 3600000 * 20, 3600000))
+
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol in ["BTC", "ETH", "SOL"]:
+                base_price = {"BTC": 100.0, "ETH": 50.0, "SOL": 10.0}[symbol]
+                price = base_price * (1 + 0.01 * i)
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "close": price,
+                        "open": price,
+                        "high": price,
+                        "low": price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        return AggBar(pl.DataFrame(rows))
+
+    def test_max_position_constraint(self, sample_data):
+        """Should apply MaxPositionConstraint."""
+        from factorium.backtest import MaxPositionConstraint, VectorizedBacktester
+
+        signal = sample_data["close"].cs_rank()
+        constraint = MaxPositionConstraint(max_weight=0.1)
+
+        bt = VectorizedBacktester(
+            prices=sample_data,
+            signal=signal,
+            constraints=[constraint],
+        )
+        # Verify constraints is stored
+        assert bt.constraints == [constraint]
+
+        result = bt.run()
+        assert result.metrics is not None
+
+    def test_long_only_constraint(self, sample_data):
+        """Should apply LongOnlyConstraint."""
+        from factorium.backtest import LongOnlyConstraint, VectorizedBacktester
+
+        signal = sample_data["close"].cs_rank()
+        constraint = LongOnlyConstraint()
+
+        bt = VectorizedBacktester(
+            prices=sample_data,
+            signal=signal,
+            neutralization="market",  # This creates negative weights
+            constraints=[constraint],
+        )
+        result = bt.run()
+
+        assert result.metrics is not None
