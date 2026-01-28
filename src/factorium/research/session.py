@@ -315,3 +315,51 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
             transaction_cost=transaction_cost or self.default_transaction_cost,
         )
         return bt.run()
+
+    def slice(
+        self,
+        start: Optional[Union[int, str]] = None,
+        end: Optional[Union[int, str]] = None,
+        symbols: Optional[List[str]] = None,
+    ) -> "ResearchSession":
+        """
+        Create new session with subset of data.
+
+        Args:
+            start: Start timestamp (ms or ISO string)
+            end: End timestamp (ms or ISO string)
+            symbols: Symbol list to include
+
+        Returns:
+            New ResearchSession with filtered data
+        """
+        import pandas as pd
+
+        df = self.data.to_polars()
+
+        # Time filters
+        if start is not None:
+            if isinstance(start, str):
+                start = int(pd.Timestamp(start).value // 1_000_000)
+            df = df.filter(pl.col("end_time") >= start)
+
+        if end is not None:
+            if isinstance(end, str):
+                end = int(pd.Timestamp(end).value // 1_000_000)
+            df = df.filter(pl.col("end_time") <= end)
+
+        # Symbol filter
+        if symbols is not None:
+            df = df.filter(pl.col("symbol").is_in(symbols))
+
+        # Create new session
+        from ..aggbar import AggBar
+
+        new_aggbar = AggBar(df)
+
+        return ResearchSession(
+            new_aggbar,
+            default_frequency=self.default_frequency,
+            default_initial_capital=self.default_initial_capital,
+            default_transaction_cost=self.default_transaction_cost,
+        )

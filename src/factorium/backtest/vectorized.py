@@ -53,7 +53,7 @@ class VectorizedBacktester:
         prices: Union[AggBar, pl.DataFrame],
         signal: Union[Factor, pl.DataFrame],
         entry_price: str = "close",
-        transaction_cost: float = 0.0003,
+        transaction_cost: Union[float, tuple[float, float]] = 0.0003,
         initial_capital: float = 10000.0,
         neutralization: Literal["market", "none"] = "market",
         frequency: str = "1h",
@@ -66,30 +66,43 @@ class VectorizedBacktester:
             prices: AggBar or Polars DataFrame with OHLCV data
             signal: Factor or Polars DataFrame with signals
             entry_price: Column name in prices for execution price
-            transaction_cost: Transaction cost as % of notional
+            transaction_cost: Transaction cost as % of notional, or (buy, sell) tuple
             initial_capital: Starting portfolio value
             neutralization: "market" for market neutral, "none" for long-only
             frequency: Frequency string (e.g., "1h", "1d")
             constraints: List of WeightConstraint objects to apply
         """
         self.initial_capital = initial_capital
-        self.transaction_cost = transaction_cost
+
+        # Normalize transaction cost
+        if isinstance(transaction_cost, (int, float)):
+            self.transaction_cost = (float(transaction_cost), float(transaction_cost))
+        else:
+            self.transaction_cost = transaction_cost
+
         self.entry_price = entry_price
         self.neutralization = neutralization
         self.frequency = frequency
         self.periods_per_year = frequency_to_periods_per_year(frequency)
+        self._periods_per_year = self.periods_per_year  # Alias for backward compatibility
         self.constraints = constraints or []
 
         # Convert inputs to Polars DataFrames
         if isinstance(prices, AggBar):
+            if entry_price not in prices.cols:
+                raise ValueError(f"entry_price '{entry_price}' not found in prices")
             self.prices_df = prices.to_polars()
         else:
             self.prices_df = prices
+            if entry_price not in prices.columns:
+                raise ValueError(f"entry_price '{entry_price}' not found in prices")
 
         if isinstance(signal, Factor):
             self.signal_df = signal.lazy.collect()
         else:
             self.signal_df = signal
+
+        self._result: Optional[BacktestResult] = None
 
     def run(self) -> BacktestResult:
         """
@@ -111,7 +124,22 @@ class VectorizedBacktester:
         portfolio_history = self._calculate_equity(combined)
 
         # Step 5: Build result
-        return self._build_result(portfolio_history, combined)
+        self._result = self._build_result(portfolio_history, combined)
+        return self._result
+
+    def summary(self) -> Dict[str, Any]:
+        """Return a summary of backtest results."""
+        if self._result is None:
+            raise RuntimeError("Must call run() before summary()")
+
+        final_value = self._result.equity_curve["total_value"].to_list()[-1]
+
+        return {
+            "initial_capital": self.initial_capital,
+            "final_value": final_value,
+            "num_trades": len(self._result.trades),
+            **self._result.metrics,
+        }
 
     def _prepare_data(self) -> pl.DataFrame:
         """Merge prices and signals, shift signals to avoid lookahead bias."""
@@ -175,8 +203,14 @@ class VectorizedBacktester:
         df = df.with_columns([(pl.col("target_qty") - pl.col("prev_qty")).alias("trade_qty")])
 
         # Trade cost
+        buy_rate, sell_rate = self.transaction_cost
         df = df.with_columns(
-            [(pl.col("trade_qty").abs() * pl.col("price") * self.transaction_cost).alias("trade_cost")]
+            [
+                pl.when(pl.col("trade_qty") > 0)
+                .then(pl.col("trade_qty") * pl.col("price") * buy_rate)
+                .otherwise(pl.col("trade_qty").abs() * pl.col("price") * sell_rate)
+                .alias("trade_cost")
+            ]
         )
 
         return df

@@ -51,8 +51,13 @@ def test_prepare_data(sample_data):
 
     # Check if returns are calculated correctly for period 1
     # Return = (prices.shift(-1) - prices) / prices
-    p1_returns = df["period_1"].dropna()
-    assert not p1_returns.empty
+    if isinstance(df, pd.DataFrame):
+        p1_returns = df["period_1"].dropna()
+        assert not p1_returns.empty
+    else:
+        # Polars
+        p1_returns = df["period_1"].drop_nulls()
+        assert len(p1_returns) > 0
 
 
 def test_prepare_data_empty_factor():

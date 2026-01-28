@@ -219,3 +219,58 @@ class TestResearchSessionInit:
         # Should accept price_col parameter
         result = session.analyze(signal, price_col="close")
         assert result is not None
+
+
+def test_slice_by_symbols():
+    # Create test data with BTC, ETH, SOL
+    timestamps = list(range(1704067200000, 1704067200000 + 3600000 * 10, 3600000))
+    rows = []
+    for ts in timestamps:
+        for symbol in ["BTC", "ETH", "SOL"]:
+            rows.append(
+                {
+                    "start_time": ts,
+                    "end_time": ts + 3600000,
+                    "symbol": symbol,
+                    "close": 100.0,
+                    "open": 100.0,
+                    "high": 100.0,
+                    "low": 100.0,
+                    "volume": 1000.0,
+                }
+            )
+
+    data = AggBar(pl.DataFrame(rows))
+    session = ResearchSession(data)
+
+    # Slice to BTC only
+    subset = session.slice(symbols=["BTC"])
+
+    assert len(subset.symbols) == 1
+    assert "BTC" in subset.symbols
+
+
+def test_slice_preserves_settings():
+    timestamps = [1704067200000, 1704070800000]
+    rows = []
+    for ts in timestamps:
+        rows.append(
+            {
+                "start_time": ts,
+                "end_time": ts + 3600000,
+                "symbol": "BTC",
+                "close": 100.0,
+                "open": 100.0,
+                "high": 100.0,
+                "low": 100.0,
+                "volume": 1000.0,
+            }
+        )
+
+    data = AggBar(pl.DataFrame(rows))
+    session = ResearchSession(data, default_frequency="4h", default_initial_capital=50000.0)
+
+    subset = session.slice(symbols=["BTC"])
+
+    assert subset.default_frequency == "4h"
+    assert subset.default_initial_capital == 50000.0
