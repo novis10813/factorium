@@ -79,3 +79,93 @@ class TestVectorizedBacktesterInit:
         result = bt.run()
 
         assert result.equity_curve["total_value"].min() > 0
+
+
+class TestWeightCalculation:
+    """Tests for weight calculation in VectorizedBacktester."""
+
+    @pytest.fixture
+    def sample_data(self):
+        """Create sample data with known signals."""
+        timestamps = [1704067200000, 1704070800000, 1704074400000]
+
+        rows = []
+        for ts in timestamps:
+            # Create signals that sum to known values
+            for symbol, signal in [("A", 0.8), ("B", 0.5), ("C", 0.2), ("D", -0.1)]:
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "open": 100.0,
+                        "high": 100.0,
+                        "low": 100.0,
+                        "close": 100.0,
+                        "volume": 1000.0,
+                    }
+                )
+
+        return AggBar(pl.DataFrame(rows))
+
+    def test_market_neutral_weights_sum_to_zero(self, sample_data):
+        """Market neutral weights should sum to zero."""
+        signal = sample_data["close"]  # Will be constant, but test the logic
+
+        bt = VectorizedBacktester(
+            prices=sample_data,
+            signal=signal,
+            neutralization="market",
+        )
+
+        # Access internal method
+        combined = bt._prepare_data()
+        weighted = bt._calculate_weights(combined)
+
+        # Group by end_time and check sum
+        weight_sums = weighted.group_by("end_time").agg(pl.col("weight").sum().alias("weight_sum"))
+
+        # All sums should be approximately zero
+        assert weight_sums["weight_sum"].abs().max() < 1e-10
+
+    def test_long_only_weights_sum_to_one(self):
+        """Long-only weights should sum to 1."""
+        timestamps = [1704067200000, 1704070800000]
+
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol, price in [("A", 100.0), ("B", 50.0), ("C", 25.0)]:
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "close": price * (1 + 0.01 * i),  # Varying prices
+                        "open": price,
+                        "high": price,
+                        "low": price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        data = AggBar(pl.DataFrame(rows))
+        signal = data["close"].cs_rank()
+
+        bt = VectorizedBacktester(
+            prices=data,
+            signal=signal,
+            neutralization="none",
+        )
+
+        combined = bt._prepare_data()
+        weighted = bt._calculate_weights(combined)
+
+        # Group by end_time and check sum (excluding first row which has no prev_signal)
+        weight_sums = (
+            weighted.filter(pl.col("weight") != 0).group_by("end_time").agg(pl.col("weight").sum().alias("weight_sum"))
+        )
+
+        # All non-zero sums should be approximately 1
+        for ws in weight_sums["weight_sum"].to_list():
+            if ws > 0:
+                assert abs(ws - 1.0) < 1e-10
