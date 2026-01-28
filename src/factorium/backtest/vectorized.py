@@ -232,7 +232,10 @@ class VectorizedBacktester:
                 "total_return": 0.0,
                 "annual_return": 0.0,
                 "sharpe_ratio": 0.0,
+                "sortino_ratio": 0.0,
+                "calmar_ratio": 0.0,
                 "max_drawdown": 0.0,
+                "win_rate": 0.0,
             }
 
         metrics = calculate_metrics(
@@ -240,6 +243,28 @@ class VectorizedBacktester:
             risk_free_rate=0.0,
             periods_per_year=self.periods_per_year,
         )
+
+        # Ensure Sortino, Calmar, and win rate follow specific requirements
+        # Sortino ratio: annual_return / downside_std
+        downside_returns = returns_series[returns_series < 0]
+        if len(downside_returns) > 0:
+            downside_std = float(downside_returns.std() * (self.periods_per_year**0.5))
+            if downside_std > EPSILON:
+                metrics["sortino_ratio"] = metrics["annual_return"] / downside_std
+            else:
+                metrics["sortino_ratio"] = np.inf if metrics["annual_return"] > 0 else 0.0
+        else:
+            metrics["sortino_ratio"] = np.inf if metrics["annual_return"] > 0 else 0.0
+
+        # Calmar ratio: annual_return / abs(max_drawdown)
+        max_dd = abs(metrics.get("max_drawdown", 0.0))
+        if max_dd > EPSILON:
+            metrics["calmar_ratio"] = metrics["annual_return"] / max_dd
+        else:
+            metrics["calmar_ratio"] = 0.0
+
+        # Win rate: (returns > 0).sum() / len(returns)
+        metrics["win_rate"] = float((returns_series > 0).sum()) / len(returns_series)
 
         return metrics
 
