@@ -1,9 +1,11 @@
 """Utility functions for backtesting."""
 
 import re
+from typing import Union
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from ..constants import (
     EPSILON,
@@ -118,18 +120,86 @@ def normalize_weights(signals: pd.Series) -> pd.Series:
     return pd.Series(positive_signals / total)
 
 
-def safe_divide(a: float, b: float, default: float = 0.0) -> float:
+def neutralize_weights_polars(
+    df: pl.DataFrame, signal_col: str = "signal", group_col: str = "end_time"
+) -> pl.DataFrame:
     """
-    Safe division that avoids division by zero.
+    Neutralize weights to sum to zero (market neutral).
+
+    Polars version for use in vectorized backtester.
+
+    Args:
+        df: DataFrame with signal column
+        signal_col: Name of signal column
+        group_col: Column to group by (usually timestamp)
+
+    Returns:
+        DataFrame with 'weight' column added
+    """
+    # Demean signal
+    df = df.with_columns([(pl.col(signal_col) - pl.col(signal_col).mean().over(group_col)).alias("signal_demeaned")])
+
+    # Normalize by sum of absolute values
+    df = df.with_columns(
+        [
+            (pl.col("signal_demeaned") / pl.col("signal_demeaned").abs().sum().over(group_col))
+            .fill_nan(0.0)
+            .fill_null(0.0)
+            .alias("weight")
+        ]
+    )
+
+    return df.drop("signal_demeaned")
+
+
+def safe_divide(
+    a: Union[float, np.ndarray, pd.Series],
+    b: Union[float, np.ndarray, pd.Series],
+    default: float = np.nan,
+) -> Union[float, np.ndarray, pd.Series]:
+    """
+    Safe division that returns default when denominator is near zero.
+
+    Uses EPSILON threshold per AGENTS.md safe_ function pattern.
 
     Args:
         a: Numerator
         b: Denominator
-        default: Value to return if b is zero or NaN
+        default: Value to return if b is zero, NaN, or within EPSILON
 
     Returns:
-        a / b if b is valid, else default
+        a/b, or default where |b| <= EPSILON
     """
-    if b == 0 or np.isnan(b):
-        return default
+    # Handle scalar
+    if isinstance(b, (int, float, np.floating, np.integer)):
+        if np.isnan(b) or abs(b) <= EPSILON:
+            return default
+        return a / b
+
+    # Handle numpy array
+    if isinstance(b, np.ndarray):
+        # We need to handle 'a' potentially being an array or scalar too
+        # np.where handles this correctly
+        result = np.where(
+            np.isnan(b) | (np.abs(b) <= EPSILON),
+            default,
+            a / np.where(np.abs(b) <= EPSILON, 1.0, b),  # Avoid divide by zero
+        )
+        return result
+
+    # Handle pandas Series
+    if isinstance(b, pd.Series):
+        mask = b.isna() | (b.abs() <= EPSILON)
+        result = a / b.where(~mask, 1.0)  # Replace near-zero with 1 to avoid error
+        result = result.where(~mask, default)  # Then set result to default
+        return result
+
+    # Fallback
+    try:
+        if b == 0 or np.isnan(b):
+            return default
+    except (ValueError, TypeError):
+        # Handle cases where b might be an array-like but not caught by above checks
+        pass
+
     return a / b

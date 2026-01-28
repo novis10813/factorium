@@ -1,7 +1,9 @@
 import pandas as pd
+import polars as pl
 import numpy as np
 import logging
-from typing import Union, List, Optional
+from dataclasses import dataclass
+from typing import Union, List, Optional, Dict, Any
 from .core import Factor
 from ..aggbar import AggBar
 import matplotlib.figure as mpl_figure
@@ -9,13 +11,59 @@ import matplotlib.figure as mpl_figure
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class FactorAnalysisResult:
+    """
+    Structured result from factor analysis.
+
+    Attributes:
+        factor_name: Name of the analyzed factor
+        periods: Analysis periods (forward return horizons)
+        quantiles: Number of quantiles used
+        ic_series: Information Coefficient time series
+        ic_summary: Summary statistics of IC (mean, std, ir, t-stat)
+        quantile_returns: Mean returns by quantile
+        cumulative_returns: Cumulative returns by quantile (if available)
+    """
+
+    factor_name: str
+    periods: int
+    quantiles: int
+    ic_series: pd.DataFrame
+    ic_summary: Dict[str, float]
+    quantile_returns: pd.DataFrame
+    cumulative_returns: Optional[pd.DataFrame] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for backward compatibility."""
+        return {
+            "factor_name": self.factor_name,
+            "periods": self.periods,
+            "quantiles": self.quantiles,
+            "ic_series": self.ic_series,
+            "ic_summary": self.ic_summary,
+            "quantile_returns": self.quantile_returns,
+            "cumulative_returns": self.cumulative_returns,
+        }
+
+    def __repr__(self) -> str:
+        ic = self.ic_summary
+        return f"""FactorAnalysisResult: {self.factor_name}
+  Periods: {self.periods}, Quantiles: {self.quantiles}
+  Mean IC: {ic.get("mean_ic", 0):.4f}
+  IC Std: {ic.get("ic_std", 0):.4f}
+  IC IR: {ic.get("ic_ir", 0):.4f}
+"""
+
+
 class FactorAnalyzer:
     """
     Analyzer for factor performance and characteristics.
     """
 
-    def __init__(self, factor: Factor, prices: Union[AggBar, Factor]):
+    def __init__(self, factor: Factor, prices: Union[AggBar, Factor], quantiles: int = 5):
         self.factor = factor
+        self.quantiles = quantiles
         self._raw_prices = prices
         if isinstance(prices, AggBar):
             try:
@@ -26,7 +74,49 @@ class FactorAnalyzer:
         else:
             self.prices = prices
 
-    def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pd.DataFrame:
+    def analyze(self, price_col: str = "close", periods: int = 1) -> FactorAnalysisResult:
+        """
+        Run full factor analysis.
+
+        Returns:
+            FactorAnalysisResult with IC series, summary, and quantile returns
+        """
+        # Prepare data
+        self.prepare_data(price_col=price_col, periods=[periods])
+
+        # Calculate IC
+        ic_series = self.calculate_ic()
+        ic_summary_df = self.calculate_ic_summary()
+
+        # Convert IC summary to dict for single period as expected by FactorAnalysisResult
+        col = f"period_{periods}"
+        ic_summary = {
+            "mean_ic": ic_summary_df.loc["mean", col] if col in ic_summary_df.columns else 0.0,
+            "ic_std": ic_summary_df.loc["std", col] if col in ic_summary_df.columns else 0.0,
+            "ic_ir": ic_summary_df.loc["ic_ir", col] if col in ic_summary_df.columns else 0.0,
+            "t-stat": ic_summary_df.loc["t-stat", col] if col in ic_summary_df.columns else 0.0,
+        }
+
+        # Calculate quantile returns
+        quantile_returns = self.calculate_quantile_returns(quantiles=self.quantiles, period=periods)
+
+        # Calculate cumulative returns (optional)
+        try:
+            cumulative_returns = self.calculate_cumulative_returns(quantiles=self.quantiles, period=periods)
+        except Exception:
+            cumulative_returns = None
+
+        return FactorAnalysisResult(
+            factor_name=self.factor.name,
+            periods=periods,
+            quantiles=self.quantiles,
+            ic_series=ic_series,
+            ic_summary=ic_summary,
+            quantile_returns=quantile_returns,
+            cumulative_returns=cumulative_returns,
+        )
+
+    def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pl.DataFrame:
         """
         Prepare data for analysis by aligning factor values with future returns.
 
@@ -35,44 +125,54 @@ class FactorAnalyzer:
             price_col: Column name for prices if prices was provided as AggBar.
 
         Returns:
-            pd.DataFrame: Merged data with 'factor' and 'period_n' returns.
+            pl.DataFrame: Merged data with 'factor' and 'period_n' returns.
         """
-        factor_pd = self.factor.to_pandas()
-        original_count = len(factor_pd)
-        if factor_pd.empty:
-            raise ValueError("Factor data is empty.")
-
         if periods is None:
             periods = [1, 5, 10]
+
+        # Get factor data
+        factor_lf = self.factor.lazy
+        # Trigger a lightweight count to check if empty
+        if factor_lf.select(pl.len()).collect().item() == 0:
+            raise ValueError("Factor data is empty.")
+
+        # Get price data
         if price_col is not None and isinstance(self._raw_prices, AggBar):
-            prices_factor = self._raw_prices[price_col]
+            prices_lf = self._raw_prices.to_polars().lazy().select(["start_time", "end_time", "symbol", price_col])
+            price_col_name = price_col
         elif self.prices is not None:
-            prices_factor = self.prices
+            # self.prices is a Factor
+            prices_lf = self.prices.lazy.rename({"factor": "__price__"})
+            price_col_name = "__price__"
         else:
             raise ValueError("No price data available. Provide price_col or initialize with prices.")
 
-        # Calculate returns: (prices.ts_shift(-p) - prices) / prices
-        returns = {}
+        # Align and merge using Polars
+        # Use inner join to ensure we have both factor and prices
+        df_lf = factor_lf.join(
+            prices_lf,
+            on=["start_time", "end_time", "symbol"],
+            how="inner",
+        )
+
+        # Calculate forward returns for each period
+        # return = (price.shift(-p) / price) - 1.0
+        return_exprs = []
         for p in periods:
-            # Future price: prices shifted by -p
-            future_price = prices_factor.ts_shift(-p)
-            ret = (future_price - prices_factor) / prices_factor
-            returns[f"period_{p}"] = ret
+            return_exprs.append(
+                ((pl.col(price_col_name).shift(-p).over("symbol") / pl.col(price_col_name)) - 1.0).alias(f"period_{p}")
+            )
 
-        # Align and merge
-        # Start with factor data
-        df = factor_pd
-
-        for name, ret_factor in returns.items():
-            ret_data = ret_factor.to_pandas().rename(columns={"factor": name})
-            # Use inner join to ensure we have both factor and returns
-            df = pd.merge(df, ret_data, on=["start_time", "end_time", "symbol"], how="inner")
+        df_lf = df_lf.with_columns(return_exprs)
 
         # Drop any remaining NaNs to ensure strict data alignment
-        self._clean_data = df.dropna()
+        self._clean_data = df_lf.collect().drop_nulls()
+
+        original_count = factor_lf.select(pl.len()).collect().item()
         final_count = len(self._clean_data)
         retained_pct = (final_count / original_count * 100) if original_count > 0 else 0
         logger.info(f"prepare_data: {original_count} rows -> {final_count} rows ({retained_pct:.1f}% retained)")
+
         return self._clean_data
 
     def calculate_ic(self, method: str = "rank") -> pd.DataFrame:
@@ -89,19 +189,15 @@ class FactorAnalyzer:
             raise ValueError("Data not prepared. Call prepare_data() first.")
 
         period_cols = [c for c in self._clean_data.columns if c.startswith("period_")]
+        corr_method = "spearman" if method == "rank" else "pearson"
 
-        def _group_ic(group):
-            if len(group) < 2:
-                return pd.Series({c: np.nan for c in period_cols}, dtype=float)
+        ic_df = (
+            self._clean_data.group_by("start_time")
+            .agg([pl.corr("factor", col, method=corr_method).alias(col) for col in period_cols])
+            .sort("start_time")
+        )
 
-            res = {}
-            corr_method = "spearman" if method == "rank" else "pearson"
-            for c in period_cols:
-                res[c] = group["factor"].corr(group[c], method=corr_method)
-            return pd.Series(res)
-
-        ic = self._clean_data.groupby("start_time").apply(_group_ic, include_groups=False)
-        return ic
+        return ic_df.to_pandas().set_index("start_time")
 
     def calculate_ic_summary(self, method: str = "rank") -> pd.DataFrame:
         """
@@ -121,7 +217,8 @@ class FactorAnalyzer:
 
             mean = vals.mean()
             std = vals.std()
-            t_stat = mean / (std / np.sqrt(len(vals))) if std > 0 else np.nan
+            count = len(vals)
+            t_stat = mean / (std / np.sqrt(count)) if std > 0 and count > 0 else np.nan
             ic_ir = mean / std if std > 0 else np.nan
 
             summary[col] = {
@@ -151,20 +248,25 @@ class FactorAnalyzer:
         if col not in self._clean_data.columns:
             raise ValueError(f"Return for period {period} not found in prepared data.")
 
-        df = self._clean_data.copy()
+        # Assign quantiles using Polars rank-based approach
+        df = self._clean_data.with_columns(pl.col("factor").rank(method="random").over("start_time").alias("_rank"))
 
-        def assign_quantiles(x):
-            try:
-                return pd.qcut(x, quantiles, labels=False, duplicates="drop") + 1
-            except ValueError:
-                return pd.Series([np.nan] * len(x), index=x.index)
-
-        df["quantile"] = df.groupby("start_time", group_keys=False)["factor"].apply(assign_quantiles)
-        df = df.dropna(subset=["quantile"])
+        df = df.with_columns(
+            ((pl.col("_rank") - 1) / pl.len().over("start_time") * quantiles)
+            .floor()
+            .cast(pl.Int32)
+            .add(1)
+            .alias("quantile")
+        )
 
         # Group by time and quantile
-        q_ret = df.groupby(["start_time", "quantile"])[col].agg(["mean", "count"]).rename(columns={"mean": "mean_ret"})
-        return q_ret
+        q_ret = (
+            df.group_by(["start_time", "quantile"])
+            .agg([pl.col(col).mean().alias("mean_ret"), pl.len().alias("count")])
+            .sort(["start_time", "quantile"])
+        )
+
+        return q_ret.to_pandas().set_index(["start_time", "quantile"])
 
     def calculate_cumulative_returns(
         self, quantiles: int = 5, period: int = 1, long_short: bool = True
