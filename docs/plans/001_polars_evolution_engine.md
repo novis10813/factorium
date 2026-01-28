@@ -41,15 +41,15 @@ Stores the structure and performance of factors.
 ## 4. Implementation Roadmap
 
 ### Phase 1: Polars Integration (The Foundation)
-*   [ ] Introduce `polars` dependency.
-*   [ ] Create `PolarsDataLoader`: Load Parquet data directly into `pl.LazyFrame`.
-*   [ ] Prototype `PolarsFactor`: A wrapper class that builds `pl.Expr`.
-    *   Implement basic operators: `ts_mean`, `ts_rank`, `cs_rank`.
+*   [x] Introduce `polars` dependency.
+*   [x] Create `PolarsDataLoader`: Load Parquet data directly into `pl.LazyFrame`. *(or equivalent Polars-based loader in `factorium.data` stack)*
+*   [x] Prototype `PolarsFactor`: A wrapper class that builds `pl.Expr`.
+    *   [x] Implement basic operators: `ts_mean`, `ts_rank`, `cs_rank` on top of Polars.
 
 ### Phase 2: Expression Tree Manipulation
-*   [ ] Implement "Expression Walker": A utility to traverse and modify the Polars expression tree.
+*   [x] Implement "Expression Walker": A utility to traverse and modify the Polars expression tree. *(can be a custom AST that compiles to `pl.Expr`, not necessarily Polars’ internal AST)*
     *   *Challenge*: Polars internal AST isn't fully exposed. May need a shadow tree or custom AST builder that compiles *to* Polars Expr.
-*   [ ] Serialize/Deserialize factors to JSON.
+*   [x] Serialize/Deserialize factors to JSON (or an equivalent structured representation suitable for future storage).
 
 ### Phase 3: The Evolutionary Loop
 *   [ ] Setup `EvoEngine` class.

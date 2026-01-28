@@ -43,9 +43,10 @@ Factorium 是一個專為量化研究設計的 Python 函式庫，提供高效�
 ```python
 from factorium import AggBar, Factor
 from factorium.backtest import Backtester
+import polars as pl
 
-# 載入數據
-agg = AggBar.from_parquet("data/btc_1h.parquet")
+# 載入數據（從 Parquet 檔案）
+agg = AggBar.from_df(pl.read_parquet("data/btc_1h.parquet"))
 
 # 計算動量因子
 momentum = (agg["close"] / agg["close"].ts_shift(20) - 1).cs_rank()

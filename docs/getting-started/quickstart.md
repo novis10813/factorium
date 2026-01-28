@@ -57,8 +57,8 @@ volume = agg["volume"]
 # 動量因子：過去 20 期報酬
 momentum = close.ts_delta(20) / close.ts_shift(20)
 
-# 波動率因子：過去 20 期標準差
-volatility = close.ts_pct_change().ts_std(20)
+# 波動率因子：過去 20 期標準差（使用百分比變化）
+volatility = (close.ts_delta(1) / close.ts_shift(1)).ts_std(20)
 
 # 橫截面排名（0~1 之間）
 momentum_rank = momentum.cs_rank()
@@ -73,18 +73,25 @@ print(momentum_rank.to_pandas().head())
 ```python
 from factorium import FactorAnalyzer
 
-# 計算未來報酬
-forward_returns = agg["close"].ts_pct_change().ts_shift(-1)
-
 # 分析因子表現
 analyzer = FactorAnalyzer(
     factor=momentum_rank,
-    forward_returns=forward_returns,
-    n_quantiles=5
+    prices=agg  # 傳入 AggBar，會自動使用 close 欄位
 )
 
-print(analyzer.summary())
-analyzer.plot_quantile_returns()
+# 準備數據（計算未來報酬）
+analyzer.prepare_data(periods=[1, 5, 10])
+
+# 計算 IC 分析
+ic_summary = analyzer.calculate_ic_summary()
+print(ic_summary)
+
+# 計算分層收益
+quantile_returns = analyzer.calculate_quantile_returns(quantiles=5)
+
+# 繪製圖表
+analyzer.plot_ic(period=1, plot_type='ts')
+analyzer.plot_quantile_returns(period=1)
 ```
 
 ---

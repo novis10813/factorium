@@ -72,7 +72,7 @@ agg = loader.load_aggbar(
 # 2. 提取因子並進行運算
 close = agg['close']
 momentum = close.ts_delta(20) / close.ts_shift(20)
-ranked = momentum.rank()
+ranked = momentum.cs_rank()
 ```
 
 ## 核心元件
@@ -160,129 +160,31 @@ agg = loader.load_aggbar(..., force_download=True)
 
 ```bash
 # 下載 7 天的期貨交易資料 (幣本位)
-python -m factorium.utils.fetch -s BTCUSD_PERP -t trades -m futures -f cm -d 7
+python -m factorium.data.downloader -s BTCUSD_PERP -t trades -m futures -f cm -d 7
 
 # 下載指定日期範圍 (USDT 本位)
-python -m factorium.utils.fetch -s BTCUSDT -t aggTrades -m futures -f um -r 2024-01-01:2024-01-31
+python -m factorium.data.downloader -s BTCUSDT -t aggTrades -m futures -f um -r 2024-01-01:2024-01-31
 
 # 下載現貨 K 線資料
-python -m factorium.utils.fetch -s BTCUSDT -t klines -m spot -r 2024-01-01:2024-01-31
+python -m factorium.data.downloader -s BTCUSDT -t klines -m spot -r 2024-01-01:2024-01-31
 ```
+
+> **注意**：命令列工具的實際參數可能有所不同，請參考 `factorium.data.downloader` 模組的說明。
 
 ---
 
-### Bar - K棒取樣
+### Bar 聚合
 
-Factorium 提供四種 K 棒取樣方法，將 tick 級別資料聚合成 OHLCV 格式：
+Factorium 透過 `BinanceDataLoader.load_aggbar()` 統一介面支援四種 K 棒聚合方式：
 
-| 類別 | 說明 | 適用場景 |
-|------|------|----------|
-| `TimeBar` | 固定時間間隔 | 一般技術分析 |
-| `TickBar` | 固定 tick 數量 | 交易活躍度分析 |
-| `VolumeBar` | 固定成交量 | 流動性分析 |
-| `DollarBar` | 固定成交金額 | 資金流向分析 |
+| bar_type | 說明 | 適用場景 |
+|----------|------|----------|
+| `time` | 固定時間間隔 | 一般技術分析 |
+| `tick` | 固定 tick 數量 | 交易活躍度分析 |
+| `volume` | 固定成交量 | 流動性分析 |
+| `dollar` | 固定成交金額 | 資金流向分析 |
 
-#### TimeBar - 時間棒
-
-以固定時間間隔聚合資料，最常見的 K 棒類型。
-
-```python
-from factorium import TimeBar
-
-# 建立 1 分鐘 K 棒
-bar = TimeBar(
-    df,
-    timestamp_col='transact_time',  # 時間戳欄位（毫秒）
-    price_col='price',              # 價格欄位
-    volume_col='quantity',          # 成交量欄位
-    interval_ms=60_000              # 間隔（毫秒），60000 = 1分鐘
-)
-
-# 建立 5 分鐘 K 棒
-bar_5m = TimeBar(df, timestamp_col='transact_time', price_col='price', 
-                 volume_col='quantity', interval_ms=300_000)
-
-# 建立 1 小時 K 棒
-bar_1h = TimeBar(df, timestamp_col='transact_time', price_col='price', 
-                 volume_col='quantity', interval_ms=3_600_000)
-
-# 存取聚合後的資料
-print(bar.bars)
-# 輸出欄位：symbol, start_time, end_time, open, high, low, close, volume
-#          (若有 is_buyer_maker 欄位) num_buyer, num_seller, num_buyer_volume, num_seller_volume
-```
-
-#### TickBar - Tick 棒
-
-每固定數量的 tick（成交筆數）形成一根 K 棒。
-
-```python
-from factorium import TickBar
-
-# 每 1000 筆成交形成一根 K 棒
-bar = TickBar(
-    df,
-    timestamp_col='ts_init',
-    price_col='price',
-    volume_col='size',
-    interval_ticks=1000
-)
-
-print(len(bar))  # K 棒數量
-```
-
-#### VolumeBar - 成交量棒
-
-每累積固定成交量形成一根 K 棒。
-
-```python
-from factorium import VolumeBar
-
-# 每累積 100 BTC 成交量形成一根 K 棒
-bar = VolumeBar(
-    df,
-    timestamp_col='time',
-    price_col='price',
-    volume_col='qty',
-    interval_volume=100
-)
-```
-
-#### DollarBar - 金額棒
-
-每累積固定成交金額形成一根 K 棒。
-
-```python
-from factorium import DollarBar
-
-# 每累積 1,000,000 USD 形成一根 K 棒
-bar = DollarBar(
-    df,
-    timestamp_col='ts_init',
-    price_col='price',
-    volume_col='size',
-    interval_dollar=1_000_000
-)
-```
-
-#### 使用 apply 添加自訂特徵
-
-所有 Bar 類別都支援 `apply` 方法來添加自訂欄位：
-
-```python
-bar = TimeBar(df, interval_ms=60_000)
-
-# 添加技術指標
-bar.apply({
-    'sma_20': lambda bars: bars['close'].rolling(20).mean(),
-    'forward_return_5': lambda bars: (bars['close'].shift(-5) - bars['close']) / bars['close'],
-    'volatility': lambda bars: bars['close'].rolling(20).std(),
-})
-
-print(bar.bars.columns)
-# ['symbol', 'start_time', 'end_time', 'open', 'high', 'low', 'close', 'volume', 
-#  'sma_20', 'forward_return_5', 'volatility']
-```
+所有 Bar 聚合都透過 `load_aggbar` 方法完成，詳細說明請參考 [Bar 聚合文檔](docs/user-guide/bar.md)。
 
 ---
 
@@ -293,18 +195,20 @@ print(bar.bars.columns)
 #### 建立 AggBar
 
 ```python
-from factorium import AggBar, TimeBar
+from factorium import AggBar
+import polars as pl
 
-# 方法 1：從多個 Bar 物件建立
-bar_btc = TimeBar(df_btc, interval_ms=60_000)
-bar_eth = TimeBar(df_eth, interval_ms=60_000)
-agg = AggBar([bar_btc, bar_eth])
-
-# 方法 2：從 DataFrame 建立（需包含 start_time, end_time, symbol 欄位）
+# 方法 1：從 DataFrame 建立（需包含 start_time, end_time, symbol 欄位）
 agg = AggBar.from_df(df)
 
-# 方法 3：從 CSV 檔案建立
+# 方法 2：從 CSV 檔案建立
 agg = AggBar.from_csv("./data/aggregated.csv")
+
+# 方法 3：從 Parquet 檔案建立
+agg = AggBar.from_df(pl.read_parquet("./data/aggregated.parquet"))
+
+# 或直接使用建構子
+agg = AggBar(pl.read_parquet("./data/aggregated.parquet"))
 ```
 
 #### 基本操作
@@ -380,7 +284,8 @@ agg.to_csv("./output/data.csv")
 agg.to_parquet("./output/data.parquet")
 
 # 轉換為 DataFrame
-df = agg.to_df()
+df = agg.to_df()  # Pandas DataFrame
+df_polars = agg.to_polars()  # Polars DataFrame
 ```
 
 ---
@@ -490,7 +395,7 @@ vr = close.ts_vr(20, 2)
 
 | 方法 | 說明 | 範例 |
 |------|------|------|
-| `rank()` | 橫截面百分位排名 | `momentum.rank()` |
+| `cs_rank()` | 橫截面百分位排名 | `momentum.cs_rank()` |
 | `mean()` | 橫截面平均 | `returns.mean()` |
 | `median()` | 橫截面中位數 | `returns.median()` |
 
@@ -501,7 +406,7 @@ close = agg['close']
 
 # 計算動量並排名
 momentum = close.ts_delta(20) / close.ts_shift(20)
-momentum_rank = momentum.rank()  # 每個時間點，對所有標的排名
+momentum_rank = momentum.cs_rank()  # 每個時間點，對所有標的排名
 
 # 市場調整報酬
 returns = close.ts_delta(1) / close.ts_shift(1)
@@ -593,7 +498,7 @@ volatility = close.ts_std(20)
 risk_adjusted_momentum = momentum_20 / volatility
 
 # 3. 橫截面排名
-momentum_rank = risk_adjusted_momentum.rank()
+momentum_rank = risk_adjusted_momentum.cs_rank()
 
 # 4. 輸出結果
 print(momentum_rank.data.tail(20))
@@ -724,7 +629,7 @@ uv run pytest tests/mixins/test_mathmixin.py
 uv run pytest --cov=factorium
 ```
 
-更多關於測試策略的細節，特別是數學運算子的「雙向驗證」流程，請參閱 [docs/pytest.md](docs/pytest.md)。
+更多關於測試策略的細節，特別是數學運算子的「雙向驗證」流程，請參閱 [docs/dev/testing.md](docs/dev/testing.md)。
 
 ---
 

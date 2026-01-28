@@ -55,8 +55,55 @@
 *   `plot_quantile_returns(period)`: 繪製各分層的平均收益。
 *   `plot_cumulative_returns(period, long_short=True)`: 繪製分層累積收益曲線。
 
-## 4. 實作細節與安全性
+## 4. 完整使用範例
+
+```python
+from factorium import BinanceDataLoader, FactorAnalyzer
+
+# 1. 載入資料
+loader = BinanceDataLoader()
+agg = loader.load_aggbar(
+    symbols=["BTCUSDT", "ETHUSDT"],
+    data_type="aggTrades",
+    market_type="futures",
+    futures_type="um",
+    start_date="2024-01-01",
+    days=30,
+    bar_type="time",
+    interval=60_000,
+)
+
+# 2. 建立因子
+close = agg["close"]
+momentum = (close.ts_delta(20) / close.ts_shift(20)).cs_rank()
+
+# 3. 建立分析器
+analyzer = FactorAnalyzer(
+    factor=momentum,
+    prices=agg  # 傳入 AggBar，會自動使用 close 欄位
+)
+
+# 4. 準備數據（必要步驟）
+analyzer.prepare_data(periods=[1, 5, 10])
+
+# 5. 計算 IC 分析
+ic = analyzer.calculate_ic(method="rank")
+ic_summary = analyzer.calculate_ic_summary(method="rank")
+print(ic_summary)
+
+# 6. 計算分層收益
+quantile_returns = analyzer.calculate_quantile_returns(quantiles=5, period=1)
+cumulative_returns = analyzer.calculate_cumulative_returns(quantiles=5, period=1, long_short=True)
+
+# 7. 繪製圖表
+analyzer.plot_ic(period=1, method="rank", plot_type="ts")
+analyzer.plot_quantile_returns(quantiles=5, period=1)
+analyzer.plot_cumulative_returns(quantiles=5, period=1, long_short=True)
+```
+
+## 5. 實作細節與安全性
 
 *   **數據對齊**: `prepare_data` 採用 Inner Join + DropNA 策略，確保分析僅基於完整的數據點，避免偏差。
 *   **依賴管理**: 繪圖功能被設計為選用 (Optional)，核心邏輯不強依賴 `matplotlib`，僅在呼叫 `plot_*` 方法時才需要。
 *   **錯誤處理**: 針對空數據、無效的分層數量、相關性計算樣本不足等情況加入了防禦性檢查。
+*   **必要步驟**: 使用 `calculate_ic()`、`calculate_quantile_returns()` 等方法前，必須先呼叫 `prepare_data()`。

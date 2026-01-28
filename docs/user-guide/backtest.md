@@ -233,8 +233,9 @@ class Backtester:
     Example:
         >>> from factorium import AggBar
         >>> from factorium.backtest import Backtester
+        >>> import polars as pl
         >>> 
-        >>> agg = AggBar.from_parquet("data.parquet")
+        >>> agg = AggBar.from_df(pl.read_parquet("data.parquet"))
         >>> close = agg["close"]
         >>> signal = (close / close.ts_shift(20) - 1).cs_rank()
         >>> 
@@ -724,9 +725,10 @@ __all__ = [
 ```python
 from factorium import AggBar
 from factorium.backtest import Backtester
+import polars as pl
 
 # 載入資料
-agg = AggBar.from_parquet("data/multi_symbol.parquet")
+agg = AggBar.from_df(pl.read_parquet("data/multi_symbol.parquet"))
 
 # 構建策略因子
 close = agg["close"]
@@ -755,8 +757,9 @@ bt.plot_equity()
 ```python
 from factorium import AggBar
 from factorium.backtest import Backtester
+import polars as pl
 
-agg = AggBar.from_parquet("data.parquet")
+agg = AggBar.from_df(pl.read_parquet("data.parquet"))
 close = agg["close"]
 
 # 構建因子

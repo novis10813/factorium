@@ -229,35 +229,65 @@ agg = loader.load_aggbar(..., use_cache=False)
 
 ## 底層 API：BarAggregator
 
-如果需要更細緻的控制，可以直接使用 `BarAggregator`：
+如果需要更細緻的控制，可以直接使用 `BarAggregator`。這是 `load_aggbar` 內部使用的聚合引擎：
 
 ```python
 from factorium.data import BarAggregator
+from factorium.data.adapters.base import ColumnMapping
 
-aggregator = BarAggregator(data_dir="~/.factorium/data")
+aggregator = BarAggregator()
+
+# 定義欄位映射
+column_mapping = ColumnMapping(
+    timestamp_col="transact_time",
+    price_col="price",
+    volume_col="quantity",
+    symbol_col="symbol",
+    is_buyer_maker_col="is_buyer_maker",
+)
 
 # 聚合 Time Bar
 df, metadata = aggregator.aggregate_time_bars(
     parquet_pattern="/path/to/data/*.parquet",
+    symbols=["BTCUSDT"],
     interval_ms=60_000,
+    start_ts=1704067200000,  # 毫秒時間戳
+    end_ts=1704153600000,
+    column_mapping=column_mapping,
+    include_buyer_seller=True,
 )
 
 # 聚合 Tick Bar
 df, metadata = aggregator.aggregate_tick_bars(
     parquet_pattern="/path/to/data/*.parquet",
+    symbols=["BTCUSDT"],
     interval_ticks=1000,
+    start_ts=1704067200000,
+    end_ts=1704153600000,
+    column_mapping=column_mapping,
+    include_buyer_seller=True,
 )
 
 # 聚合 Volume Bar
 df, metadata = aggregator.aggregate_volume_bars(
     parquet_pattern="/path/to/data/*.parquet",
+    symbols=["BTCUSDT"],
     interval_volume=100,
+    start_ts=1704067200000,
+    end_ts=1704153600000,
+    column_mapping=column_mapping,
+    include_buyer_seller=True,
 )
 
 # 聚合 Dollar Bar
 df, metadata = aggregator.aggregate_dollar_bars(
     parquet_pattern="/path/to/data/*.parquet",
+    symbols=["BTCUSDT"],
     interval_dollar=1_000_000,
+    start_ts=1704067200000,
+    end_ts=1704153600000,
+    column_mapping=column_mapping,
+    include_buyer_seller=True,
 )
 ```
 
@@ -267,6 +297,8 @@ df, metadata = aggregator.aggregate_dollar_bars(
 
 - **`pl.DataFrame`**: Polars DataFrame，包含聚合後的 OHLCV 資料
 - **`AggBarMetadata`**: 包含 `symbols`, `min_time`, `max_time`, `num_rows`
+
+> **注意**：對於大多數使用場景，建議直接使用 `BinanceDataLoader.load_aggbar()`，它會自動處理欄位映射、時間範圍計算等細節。
 
 ---
 
