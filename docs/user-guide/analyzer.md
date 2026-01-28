@@ -23,7 +23,11 @@
     *   這是執行分析前的必要步驟。
     *   負責計算未來收益率 (Forward Returns)。
     *   執行嚴格的數據對齊 (Inner Join)，去除無效數據。
-    *   使用 `Factor` 運算邏輯 (`ts_shift(-p)`) 進行高效計算。
+    *   使用 Polars 向量化計算（`LazyFrame` + `shift(-p).over("symbol")`），效能與記憶體表現更佳。
+
+*   **一鍵分析**: `analyze(price_col="close", periods=1) -> FactorAnalysisResult`
+    *   自動呼叫 `prepare_data()`、`calculate_ic()`、`calculate_ic_summary()`、`calculate_quantile_returns()` 等方法。
+    *   回傳結構化結果物件 `FactorAnalysisResult`，方便後續串接報告或序列化。
 
 ### 2.2 繪圖類別 `FactorAnalyzerPlotter`
 位於 `src/factorium/factors/plotting_analyzer.py`。
@@ -31,6 +35,30 @@
 *   負責所有圖表的繪製工作，與分析邏輯分離。
 *   基於 `matplotlib` 實作。
 *   支援 IC 時序圖、IC 直方圖、分層收益柱狀圖、累積收益曲線。
+
+### 2.3 結構化結果 `FactorAnalysisResult`
+
+`FactorAnalyzer.analyze()` 會回傳 `FactorAnalysisResult` dataclass，方便在 Notebook 或報告中使用：
+
+```python
+from factorium.factors import FactorAnalysisResult
+
+result: FactorAnalysisResult = analyzer.analyze(price_col="close", periods=1)
+```
+
+主要欄位：
+
+- `factor_name: str`：因子名稱。
+- `periods: int`：分析使用的持有期（forward return horizon）。
+- `quantiles: int`：使用的分位數數量。
+- `ic_series: pd.DataFrame`：IC 時間序列（index 為 `start_time`）。
+- `ic_summary: dict`：IC 摘要統計，包含 `mean_ic`、`ic_std`、`ic_ir`、`t-stat`。
+- `quantile_returns: pd.DataFrame`：分層收益（MultiIndex: `start_time`, `quantile`）。
+- `cumulative_returns: Optional[pd.DataFrame]`：各分層累積收益（若計算成功）。
+
+同時提供：
+
+- `to_dict()`：轉換為 `dict`，方便序列化或與舊版 API 相容。
 
 ## 3. 功能詳解
 
@@ -58,7 +86,8 @@
 ## 4. 完整使用範例
 
 ```python
-from factorium import BinanceDataLoader, FactorAnalyzer
+from factorium import BinanceDataLoader
+from factorium.factors import FactorAnalyzer
 
 # 1. 載入資料
 loader = BinanceDataLoader()
@@ -80,22 +109,21 @@ momentum = (close.ts_delta(20) / close.ts_shift(20)).cs_rank()
 # 3. 建立分析器
 analyzer = FactorAnalyzer(
     factor=momentum,
-    prices=agg  # 傳入 AggBar，會自動使用 close 欄位
+    prices=agg,  # 傳入 AggBar，會自動使用 close 欄位
 )
 
-# 4. 準備數據（必要步驟）
-analyzer.prepare_data(periods=[1, 5, 10])
+# 4. 一鍵分析（會自動呼叫 prepare_data）
+result = analyzer.analyze(price_col="close", periods=1)
+print(result.ic_summary)
 
-# 5. 計算 IC 分析
+# 5. 若需更細緻控制，可手動操作：
+analyzer.prepare_data(periods=[1, 5, 10], price_col="close")
 ic = analyzer.calculate_ic(method="rank")
 ic_summary = analyzer.calculate_ic_summary(method="rank")
-print(ic_summary)
-
-# 6. 計算分層收益
 quantile_returns = analyzer.calculate_quantile_returns(quantiles=5, period=1)
 cumulative_returns = analyzer.calculate_cumulative_returns(quantiles=5, period=1, long_short=True)
 
-# 7. 繪製圖表
+# 6. 繪製圖表
 analyzer.plot_ic(period=1, method="rank", plot_type="ts")
 analyzer.plot_quantile_returns(quantiles=5, period=1)
 analyzer.plot_cumulative_returns(quantiles=5, period=1, long_short=True)
@@ -104,6 +132,7 @@ analyzer.plot_cumulative_returns(quantiles=5, period=1, long_short=True)
 ## 5. 實作細節與安全性
 
 *   **數據對齊**: `prepare_data` 採用 Inner Join + DropNA 策略，確保分析僅基於完整的數據點，避免偏差。
+*   **Polars 為主**: 所有對齊與 forward return 計算都在 Polars 中完成，再轉為 pandas 給 IC / 分層結果。
 *   **依賴管理**: 繪圖功能被設計為選用 (Optional)，核心邏輯不強依賴 `matplotlib`，僅在呼叫 `plot_*` 方法時才需要。
 *   **錯誤處理**: 針對空數據、無效的分層數量、相關性計算樣本不足等情況加入了防禦性檢查。
-*   **必要步驟**: 使用 `calculate_ic()`、`calculate_quantile_returns()` 等方法前，必須先呼叫 `prepare_data()`。
+*   **必要步驟**: 若直接使用 `calculate_ic()`、`calculate_quantile_returns()` 等方法，必須先呼叫 `prepare_data()`；若使用 `analyze()`，會自動處理。

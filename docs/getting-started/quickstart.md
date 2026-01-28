@@ -68,59 +68,37 @@ print(momentum_rank.to_pandas().head())
 
 ---
 
-## 4. 因子分析
+## 4. 使用 ResearchSession 一次串好「因子 → 分析 → 回測」
 
 ```python
-from factorium import FactorAnalyzer
+from factorium import ResearchSession
 
-# 分析因子表現
-analyzer = FactorAnalyzer(
-    factor=momentum_rank,
-    prices=agg  # 傳入 AggBar，會自動使用 close 欄位
-)
+# 建立研究工作階段
+session = ResearchSession(agg)
 
-# 準備數據（計算未來報酬）
-analyzer.prepare_data(periods=[1, 5, 10])
+# 建立因子（也可以用 expression string）
+momentum = session.create_factor("ts_delta(close, 20) / ts_shift(close, 20)", name="momentum")
+signal = momentum.cs_rank()
 
-# 計算 IC 分析
-ic_summary = analyzer.calculate_ic_summary()
-print(ic_summary)
+# 快速分析（IC + 分層收益）
+analysis = session.analyze(signal, periods=1)
+print(analysis.ic_summary)
 
-# 計算分層收益
-quantile_returns = analyzer.calculate_quantile_returns(quantiles=5)
-
-# 繪製圖表
-analyzer.plot_ic(period=1, plot_type='ts')
-analyzer.plot_quantile_returns(period=1)
-```
-
----
-
-## 5. 策略回測
-
-```python
-from factorium.backtest import Backtester
-
-# 建立回測器
-bt = Backtester(
-    prices=agg,
-    signal=momentum_rank,
-    neutralization="market",  # 市場中性
-    transaction_cost=0.0003,
-    initial_capital=100000
-)
-
-# 執行回測
-result = bt.run()
-
-# 查看結果
+# 執行向量化回測（預設使用 VectorizedBacktester）
+result = session.backtest(signal, neutralization="market")
 print(result.metrics)
-bt.plot_equity()
+```
+
+如需更精簡的文字報告，可以使用：
+
+```python
+report_text = session.quick_report(signal, periods=1)
+print(report_text)
 ```
 
 ---
 
-## 6. 不同類型的 Bar 聚合
+## 5. 不同類型的 Bar 聚合
 
 除了時間條，Factorium 也支援其他類型的 bar 聚合：
 
@@ -168,4 +146,5 @@ dollar_agg = loader.load_aggbar(
 
 - [Bar 聚合](../user-guide/bar.md) - 深入了解不同類型的 K 線
 - [Factor 因子](../user-guide/factor.md) - 完整的運算子列表
-- [策略回測](../user-guide/backtest.md) - 回測系統詳細說明
+- [因子分析](../user-guide/analyzer.md) - FactorAnalyzer / FactorAnalysisResult 詳細說明
+- [策略回測](../user-guide/backtest.md) - VectorizedBacktester 與權重約束
