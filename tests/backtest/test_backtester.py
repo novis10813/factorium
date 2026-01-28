@@ -7,6 +7,7 @@ from factorium.backtest import (
     Backtester,
     BacktestResult,
     Portfolio,
+    VectorizedBacktester,
     calculate_metrics,
     frequency_to_periods_per_year,
     neutralize_weights,
@@ -291,3 +292,94 @@ class TestEdgeCases:
 
         with pytest.raises(ValueError, match="periods_per_year"):
             calculate_metrics(returns, periods_per_year=1e10)
+
+class TestVectorizedBacktesterIntegration:
+    """Integration tests comparing VectorizedBacktester with Backtester."""
+
+    @pytest.fixture
+    def sample_data(self):
+        np.random.seed(42)
+        dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
+        timestamps = dates.astype(np.int64) // 10**6
+
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol in ["BTC", "ETH"]:
+                base_price = 100.0 if symbol == "BTC" else 50.0
+                price = base_price * (1 + 0.01 * i + 0.005 * np.random.randn())
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "open": price * 0.99,
+                        "high": price * 1.01,
+                        "low": price * 0.98,
+                        "close": price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        df = pd.DataFrame(rows)
+        return AggBar(df)
+
+    def test_vectorized_vs_original_equity_curve(self, sample_data):
+        """VectorizedBacktester should produce similar equity curve to Backtester."""
+        close = sample_data["close"]
+        signal = close.cs_rank()
+
+        # Run original backtester
+        bt_orig = Backtester(
+            prices=sample_data,
+            signal=signal,
+            transaction_cost=0.0001,
+            initial_capital=10000.0,
+            neutralization="market",
+        )
+        result_orig = bt_orig.run()
+
+        # Run vectorized backtester
+        bt_vec = VectorizedBacktester(
+            prices=sample_data,
+            signal=signal,
+            transaction_cost=0.0001,
+            initial_capital=10000.0,
+            neutralization="market",
+        )
+        result_vec = bt_vec.run()
+
+        # Compare final equity
+        final_orig = result_orig.equity_curve.iloc[-1]
+        
+        # Vectorized result is Polars
+        final_vec = result_vec.equity_curve["total_value"].to_list()[-1]
+
+        # Use 1% tolerance
+        assert abs(final_vec - final_orig) / final_orig < 0.01
+
+    def test_vectorized_polars_output_types(self, sample_data):
+        """VectorizedBacktester should return Polars DataFrames."""
+        signal = sample_data["close"].cs_rank()
+        bt = VectorizedBacktester(prices=sample_data, signal=signal)
+        result = bt.run()
+
+        import polars as pl
+        assert isinstance(result.equity_curve, pl.DataFrame)
+        assert isinstance(result.returns, pl.DataFrame)
+        assert isinstance(result.trades, pl.DataFrame)
+
+    def test_vectorized_metrics_comparable(self, sample_data):
+        """Metrics should be comparable between implementations."""
+        close = sample_data["close"]
+        signal = close.cs_rank()
+
+        bt_orig = Backtester(prices=sample_data, signal=signal)
+        result_orig = bt_orig.run()
+
+        bt_vec = VectorizedBacktester(prices=sample_data, signal=signal)
+        result_vec = bt_vec.run()
+
+        # Compare sharpe_ratio
+        assert abs(result_vec.metrics["sharpe_ratio"] - result_orig.metrics["sharpe_ratio"]) < 0.1
+        # Compare total_return
+        assert abs(result_vec.metrics["total_return"] - result_orig.metrics["total_return"]) < 0.01
