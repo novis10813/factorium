@@ -1,8 +1,11 @@
 import pytest
 import polars as pl
+import pandas as pd
 
 from factorium import AggBar
 from factorium.research import ResearchSession
+from factorium.backtest.vectorized import BacktestResult
+from factorium.factors import Factor
 
 
 class TestResearchSessionMethods:
@@ -47,8 +50,6 @@ class TestResearchSessionMethods:
 
     def test_from_df_pandas(self):
         """from_df() should work with pandas DataFrame."""
-        import pandas as pd
-
         df = pd.DataFrame(
             {
                 "start_time": [1704067200000, 1704070800000],
@@ -160,8 +161,6 @@ class TestResearchSessionInit:
         session = ResearchSession(sample_data)
         close_factor = session.factor("close")
 
-        from factorium.factors import Factor
-
         assert isinstance(close_factor, Factor)
         assert close_factor.name == "close"
 
@@ -172,7 +171,51 @@ class TestResearchSessionInit:
 
         result = session.backtest(signal)
 
-        from factorium.backtest.vectorized import BacktestResult
-
         assert isinstance(result, BacktestResult)
         assert result.metrics is not None
+
+    def test_symbols_property(self, sample_data):
+        session = ResearchSession(sample_data)
+        assert len(session.symbols) == 3
+        assert "BTC" in session.symbols
+
+    def test_cols_property(self, sample_data):
+        session = ResearchSession(sample_data)
+        assert "close" in session.cols
+        assert "volume" in session.cols
+
+    def test_create_factor_caching(self, sample_data):
+        session = ResearchSession(sample_data)
+        f1 = session.create_factor("close", "price")
+        f2 = session.create_factor("close", "price")
+        assert f1 is f2  # Same object (cached)
+
+    def test_create_factor_from_callable(self, sample_data):
+        session = ResearchSession(sample_data)
+        factor = session.create_factor(lambda agg: agg["close"].cs_rank(), "rank")
+        assert factor.name == "rank"
+
+    def test_init_with_dataframe(self, sample_data):
+        df = sample_data.to_df()
+        session = ResearchSession(df)
+        assert isinstance(session.data, AggBar)
+        assert len(session.symbols) == 3
+
+    def test_quick_report_returns_string(self, sample_data):
+        session = ResearchSession(sample_data)
+        signal = session.factor("close").cs_rank()
+
+        report = session.quick_report(signal)
+
+        assert isinstance(report, str)
+        assert "Factor Analysis Report" in report
+        assert "IC Analysis" in report
+        assert "Backtest Performance" in report
+
+    def test_analyze_accepts_price_col(self, sample_data):
+        session = ResearchSession(sample_data)
+        signal = session.factor("close").cs_rank()
+
+        # Should accept price_col parameter
+        result = session.analyze(signal, price_col="close")
+        assert result is not None
