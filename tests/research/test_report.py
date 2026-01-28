@@ -77,3 +77,18 @@ class TestFactorReport:
         assert "FactorReport" in repr_str
         assert "IC Summary" in repr_str
         assert "Backtest Metrics" in repr_str
+
+    def test_generate_automates_workflow(self, sample_data):
+        """generate() should run both analysis and backtest."""
+        from factorium.research import ResearchSession
+
+        session = ResearchSession(sample_data)
+        signal = session.factor("close").cs_rank()
+
+        # Use generate instead of manual steps
+        report = FactorReport.generate(session, signal)
+
+        assert isinstance(report, FactorReport)
+        assert report.analysis is not None
+        assert report.backtest is not None
+        assert "ic_summary" in report.analysis

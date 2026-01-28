@@ -4,7 +4,10 @@ Factor analysis and backtest report generation.
 Combines factor analysis and backtest results into comprehensive reports.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .session import ResearchSession
 import polars as pl
 import pandas as pd
 
@@ -22,14 +25,49 @@ class FactorReport:
         backtest: Backtest results from VectorizedBacktester
 
     Example:
-        >>> from factorium.research import ResearchSession
+        >>> from factorium.research import ResearchSession, FactorReport
         >>> session = ResearchSession(data)
         >>> signal = session.factor("close").cs_rank()
-        >>> analysis = session.analyze(signal)
-        >>> backtest = session.backtest(signal)
-        >>> report = FactorReport(signal, analysis, backtest)
-        >>> report.summary()
+        >>> report = FactorReport.generate(session, signal)
+        >>> print(report)
     """
+
+    @classmethod
+    def generate(
+        cls,
+        session: "ResearchSession",
+        factor: "Factor",
+        price_col: str = "close",
+        quantiles: int = 5,
+        **backtest_kwargs,
+    ) -> "FactorReport":
+        """
+        Generate report by running analysis and backtest automatically.
+
+        Args:
+            session: ResearchSession with data
+            factor: Factor to analyze
+            price_col: Price column for analysis
+            quantiles: Quantiles for analysis
+            **backtest_kwargs: Additional args for backtest (neutralization, etc.)
+
+        Returns:
+            FactorReport with complete analysis and backtest results
+
+        Example:
+            >>> from factorium.research import ResearchSession, FactorReport
+            >>> session = ResearchSession(data)
+            >>> signal = session.factor("close").cs_rank()
+            >>> report = FactorReport.generate(session, signal)
+            >>> print(report)
+        """
+        # Run analysis
+        analysis = session.analyze(factor, price_col=price_col, quantiles=quantiles)
+
+        # Run backtest
+        backtest = session.backtest(factor, **backtest_kwargs)
+
+        return cls(factor, analysis, backtest)
 
     def __init__(
         self,
