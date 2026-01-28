@@ -14,8 +14,9 @@ class FactorAnalyzer:
     Analyzer for factor performance and characteristics.
     """
 
-    def __init__(self, factor: Factor, prices: Union[AggBar, Factor]):
+    def __init__(self, factor: Factor, prices: Union[AggBar, Factor], quantiles: int = 5):
         self.factor = factor
+        self.quantiles = quantiles
         self._raw_prices = prices
         if isinstance(prices, AggBar):
             try:
@@ -25,6 +26,21 @@ class FactorAnalyzer:
                 self.prices = None
         else:
             self.prices = prices
+
+    def analyze(self) -> dict:
+        """
+        Perform a standard analysis on the factor.
+
+        Returns:
+            dict: Analysis results containing IC summary and quantile returns.
+        """
+        self.prepare_data()
+        ic_summary = self.calculate_ic_summary()
+        quantile_returns = self.calculate_quantile_returns(quantiles=self.quantiles)
+        return {
+            "ic_summary": ic_summary,
+            "quantile_returns": quantile_returns,
+        }
 
     def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pd.DataFrame:
         """
