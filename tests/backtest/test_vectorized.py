@@ -230,3 +230,52 @@ class TestMetricsCalculation:
         result = bt.run()
 
         assert result.metrics["max_drawdown"] <= 0
+
+
+class TestBackwardCompatibility:
+    """Tests for backward compatibility with existing Backtester API."""
+
+    @pytest.fixture
+    def sample_data(self):
+        """Create sample data for testing."""
+        timestamps = list(range(1704067200000, 1704067200000 + 3600000 * 20, 3600000))
+
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol in ["BTC", "ETH"]:
+                base_price = {"BTC": 100.0, "ETH": 50.0}[symbol]
+                price = base_price * (1 + 0.01 * i)
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "open": price * 0.99,
+                        "high": price * 1.01,
+                        "low": price * 0.98,
+                        "close": price,
+                        "volume": 1000.0,
+                    }
+                )
+
+        return AggBar(pl.DataFrame(rows))
+
+    def test_can_import_from_backtest_module(self):
+        """Should be able to import VectorizedBacktester from backtest."""
+        from factorium.backtest import VectorizedBacktester
+
+        assert VectorizedBacktester is not None
+
+    def test_result_to_pandas_compatibility(self, sample_data):
+        """BacktestResult.to_pandas() should return pandas DataFrames."""
+        signal = sample_data["close"].cs_rank()
+        bt = VectorizedBacktester(prices=sample_data, signal=signal)
+        result = bt.run()
+
+        pandas_result = result.to_pandas()
+
+        import pandas as pd
+
+        assert isinstance(pandas_result.equity_curve, pd.DataFrame)
+        assert isinstance(pandas_result.returns, pd.DataFrame)
+        assert isinstance(pandas_result.metrics, dict)
