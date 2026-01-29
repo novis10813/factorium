@@ -17,9 +17,4 @@ test_data/
 # Coverage reports
 .coverage
 htmlcov/
-.pytest_cache/.coverage
-
-# Coverage reports
-.coverage
-htmlcov/
 .pytest_cache/
