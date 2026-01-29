@@ -160,6 +160,52 @@ def load_aggbar(
     )
     ```
 
+=== "載入 Klines 數據"
+
+    Klines 數據是來自 Binance 的已聚合 OHLCV 數據。與 trades/aggTrades 不同，klines 不需要進行棒聚合，直接載入。
+
+    ```python
+    from factorium.data import BinanceDataLoader
+
+    loader = BinanceDataLoader()
+
+    # 載入 1m klines（預設）
+    agg = loader.load_aggbar(
+        symbols=["BTCUSDT", "ETHUSDT"],
+        data_type="klines",
+        market_type="futures",
+        futures_type="um",
+        start_date="2024-01-01",
+        days=7,
+    )
+
+    # 重新取樣為 5m
+    agg_5m = loader.load_aggbar(
+        symbols=["BTCUSDT"],
+        data_type="klines",
+        market_type="futures",
+        start_date="2024-01-01",
+        days=7,
+        interval=300_000,  # 5 分鐘
+    )
+
+    # 重新取樣為 1h
+    agg_1h = loader.load_aggbar(
+        symbols=["BTCUSDT"],
+        data_type="klines",
+        market_type="futures",
+        start_date="2024-01-01",
+        days=7,
+        interval=3_600_000,  # 1 小時
+    )
+    ```
+
+    **注意事項：**
+    - Klines 僅支援 `bar_type="time"`（預設值）
+    - 下載的數據始終為 1 分鐘，重新取樣即時進行
+    - Klines 繞過 `BarAggregator` 以提升效能
+    - 載入所有 klines 欄位，包括微觀結構數據（quote_volume, count, taker_buy_volume, taker_buy_quote_volume）
+
 ---
 
 ## Jupyter Notebook 支援
