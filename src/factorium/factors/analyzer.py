@@ -29,7 +29,7 @@ class FactorAnalysisResult:
     """
 
     factor_name: str
-    periods: int
+    periods: Union[int, List[int]]  # MVP supports int only, list[int] reserved for future
     quantiles: int
     ic_series: pd.DataFrame
     ic_summary: Dict[str, float]
@@ -256,6 +256,13 @@ class FactorAnalyzer:
 
         # Get price data
         if price_col is not None and isinstance(self._raw_prices, AggBar):
+            # Check if price_col exists in AggBar
+            if price_col not in self._raw_prices._data.columns:
+                available_cols = ", ".join(sorted(self._raw_prices._data.columns))
+                raise ValueError(
+                    f"Price column '{price_col}' not found in AggBar. "
+                    f"Available columns: {available_cols}"
+                )
             prices_lf = self._raw_prices.to_polars().lazy().select(["start_time", "end_time", "symbol", price_col])
             price_col_name = price_col
         elif self.prices is not None:
