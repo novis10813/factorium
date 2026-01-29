@@ -62,6 +62,111 @@ class FactorAnalysisResult:
   Turnover: {self.turnover_mean:.4f}
 """
 
+    def save(self, output_dir: str) -> None:
+        """
+        Save analysis results to directory with timestamp.
+
+        Creates structure:
+        {output_dir}/
+        └── YYYYMMDD_HHMMSS_{factor_name}/
+            ├── config.json
+            ├── ic_series.csv
+            ├── ic_summary.csv
+            ├── turnover.csv
+            ├── quantile_returns.csv
+            ├── cumulative_returns.csv
+            └── plots/
+                ├── ic_distribution.png
+                ├── ic_timeseries.png
+                ├── quantile_returns.png
+                └── cumulative_returns.png
+
+        Args:
+            output_dir: Base directory for experiment outputs
+        """
+        from pathlib import Path
+        from datetime import datetime
+        import json
+        import matplotlib.pyplot as plt
+        from .plotting_analyzer import FactorAnalyzerPlotter
+
+        # Create timestamped folder
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder_name = f"{timestamp}_{self.factor_name}"
+        exp_path = Path(output_dir) / folder_name
+        exp_path.mkdir(parents=True, exist_ok=True)
+
+        # Create plots subdirectory
+        plots_path = exp_path / "plots"
+        plots_path.mkdir(exist_ok=True)
+
+        # Save CSV files
+        self.ic_series.to_csv(exp_path / "ic_series.csv")
+
+        # Convert ic_summary dict to DataFrame for CSV
+        ic_summary_df = pd.DataFrame([self.ic_summary])
+        ic_summary_df.to_csv(exp_path / "ic_summary.csv", index=False)
+
+        self.turnover_series.to_csv(exp_path / "turnover.csv", header=True)
+        self.quantile_returns.to_csv(exp_path / "quantile_returns.csv")
+
+        if self.cumulative_returns is not None:
+            self.cumulative_returns.to_csv(exp_path / "cumulative_returns.csv")
+
+        # Save plots
+        plotter = FactorAnalyzerPlotter()
+
+        # IC time series plot
+        try:
+            fig_ic_ts = plotter.plot_ic_ts(self.ic_series)
+            fig_ic_ts.savefig(plots_path / "ic_timeseries.png", dpi=150, bbox_inches="tight")
+            plt.close(fig_ic_ts)
+        except Exception as e:
+            logger.warning(f"Failed to generate IC timeseries plot: {e}")
+
+        # IC distribution plot
+        try:
+            fig_ic_hist = plotter.plot_ic_hist(self.ic_series)
+            fig_ic_hist.savefig(plots_path / "ic_distribution.png", dpi=150, bbox_inches="tight")
+            plt.close(fig_ic_hist)
+        except Exception as e:
+            logger.warning(f"Failed to generate IC distribution plot: {e}")
+
+        # Quantile returns plot
+        try:
+            fig_qret = plotter.plot_quantile_returns(self.quantile_returns)
+            fig_qret.savefig(plots_path / "quantile_returns.png", dpi=150, bbox_inches="tight")
+            plt.close(fig_qret)
+        except Exception as e:
+            logger.warning(f"Failed to generate quantile returns plot: {e}")
+
+        # Cumulative returns plot (if available)
+        if self.cumulative_returns is not None:
+            try:
+                fig_cumret = plotter.plot_cumulative_returns(self.cumulative_returns)
+                fig_cumret.savefig(plots_path / "cumulative_returns.png", dpi=150, bbox_inches="tight")
+                plt.close(fig_cumret)
+            except Exception as e:
+                logger.warning(f"Failed to generate cumulative returns plot: {e}")
+
+        # Save config.json
+        config = {
+            "factor_name": self.factor_name,
+            "periods": self.periods,
+            "quantiles": self.quantiles,
+            "created_at": datetime.now().isoformat(),
+            "data_range": {
+                "start": str(self.ic_series.index.min()),
+                "end": str(self.ic_series.index.max()),
+                "n_observations": len(self.ic_series),
+            },
+        }
+
+        with open(exp_path / "config.json", "w") as f:
+            json.dump(config, f, indent=2)
+
+        logger.info(f"Results saved to {exp_path}")
+
 
 class FactorAnalyzer:
     """

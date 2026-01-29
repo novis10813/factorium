@@ -246,3 +246,86 @@ def test_analysis_result_has_turnover_fields(sample_data):
 
     # Check values are reasonable
     assert not np.isnan(result.turnover_mean)
+
+
+def test_save_creates_correct_structure(sample_data):
+    """Test that save() creates correct directory structure."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+    result = analyzer.analyze(periods=1)
+
+    import tempfile
+    from pathlib import Path
+    import json
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        # Find the created experiment folder
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        assert len(exp_dirs) == 1
+        exp_dir = exp_dirs[0]
+
+        # Check folder name format: YYYYMMDD_HHMMSS_factorname
+        folder_name = exp_dir.name
+        parts = folder_name.split("_")
+        assert len(parts) >= 3
+        assert parts[0].isdigit() and len(parts[0]) == 8  # YYYYMMDD
+        assert parts[1].isdigit() and len(parts[1]) == 6  # HHMMSS
+
+        # Check CSV files exist
+        assert (exp_dir / "ic_series.csv").exists()
+        assert (exp_dir / "ic_summary.csv").exists()
+        assert (exp_dir / "turnover.csv").exists()
+        assert (exp_dir / "quantile_returns.csv").exists()
+
+        # cumulative_returns may be None
+        if result.cumulative_returns is not None:
+            assert (exp_dir / "cumulative_returns.csv").exists()
+
+        # Check config.json exists and has correct structure
+        config_path = exp_dir / "config.json"
+        assert config_path.exists()
+
+        with open(config_path) as f:
+            config = json.load(f)
+
+        assert config["factor_name"] == result.factor_name
+        assert config["periods"] == result.periods
+        assert config["quantiles"] == result.quantiles
+        assert "created_at" in config
+
+        # Check plots directory exists
+        plots_dir = exp_dir / "plots"
+        assert plots_dir.exists()
+        assert plots_dir.is_dir()
+
+
+def test_save_generates_plots(sample_data):
+    """Test that save() generates plot files."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+    result = analyzer.analyze(periods=1)
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        exp_dir = exp_dirs[0]
+        plots_dir = exp_dir / "plots"
+
+        # Check plot files exist
+        assert (plots_dir / "ic_timeseries.png").exists()
+        assert (plots_dir / "ic_distribution.png").exists()
+        assert (plots_dir / "quantile_returns.png").exists()
+
+        # cumulative_returns plot only if data exists
+        if result.cumulative_returns is not None:
+            assert (plots_dir / "cumulative_returns.png").exists()
