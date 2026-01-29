@@ -245,27 +245,26 @@ class FactorAnalyzer:
         if not hasattr(self, "_clean_data"):
             raise ValueError("Data not prepared. Call prepare_data() first.")
 
-        # Use Polars to calculate rank per start_time
-        df = self._clean_data.with_columns(
-            pl.col("factor").rank(method="average").over("start_time").alias("factor_rank")
+        # Calculate rank per start_time and get previous rank for each symbol
+        turnover_df = (
+            self._clean_data.with_columns(
+                pl.col("factor").rank(method="average").over("start_time").alias("factor_rank")
+            )
+            .with_columns(
+                # Get previous period's rank for each symbol
+                pl.col("factor_rank").shift(1).over("symbol").alias("prev_rank")
+            )
+            .group_by("start_time")
+            .agg(
+                # Calculate correlation between current rank and previous rank
+                pl.corr("factor_rank", "prev_rank").alias("autocorr")
+            )
+            .select([pl.col("start_time"), (1 - pl.col("autocorr")).alias("turnover")])
+            .sort("start_time")
         )
 
-        # Normalize rank to percentile (0-1)
-        df = df.with_columns(((pl.col("factor_rank") - 1) / (pl.len().over("start_time") - 1)).alias("factor_rank_pct"))
-
-        # Convert to pandas for correlation calculation
-        df_pd = df.select(["start_time", "symbol", "factor_rank_pct"]).to_pandas()
-
-        # Pivot to wide format (start_time x symbol)
-        pivot = df_pd.pivot(index="start_time", columns="symbol", values="factor_rank_pct")
-
-        # Calculate rank autocorrelation (correlation with previous day)
-        rank_autocorr = pivot.corrwith(pivot.shift(1), axis=1)
-
-        # Turnover = 1 - autocorrelation
-        turnover = 1 - rank_autocorr
-
-        return turnover
+        # Convert to pandas Series only at the end
+        return turnover_df.to_pandas().set_index("start_time")["turnover"]
 
     def calculate_quantile_returns(self, quantiles: int = 5, period: int = 1) -> pd.DataFrame:
         """
