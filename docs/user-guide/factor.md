@@ -257,11 +257,11 @@ fig = close.plot(
 
 ```python
 result = factor.eval(
-    prices: Factor,                 # 價格因子（例如 close 價）
-    periods: int = 1,               # 持有期（單位：bar 數 / 天等，目前僅支援單一 int）
-    quantiles: int = 5,             # 分層數量（global quantile）
+    prices: Factor | AggBar,        # 價格數據（Factor 或 AggBar）
+    periods: int = 1,                # 持有期（單位：bar 數 / 天等，目前僅支援單一 int）
+    quantiles: int = 5,              # 分層數量（per-day cross-sectional quantiles）
     output_dir: str | None = None,  # 若提供路徑，會輸出評估結果到時間戳目錄
-    price_col: str = "close",       # 價格欄位名稱
+    price_col: str = "close",       # 價格欄位名稱（當 prices 為 AggBar 時使用）
     **kwargs,
 ) -> FactorAnalysisResult
 ```
@@ -269,21 +269,29 @@ result = factor.eval(
 `result` 回傳一個 `FactorAnalysisResult` dataclass，主要包含：
 
 - **`factor_name`**: 因子名稱
-- **`periods`**: 持有期
+- **`periods`**: 持有期（`int`，未來可能支援 `list[int]`）
 - **`quantiles`**: 分層數量
-- **`ic_series`**: `DataFrame` — 每日 Rank IC 時間序列
-- **`ic_summary`**: `dict` — IC 統計摘要（`mean_ic`, `ic_std`, `ic_ir`, `t_stat`）
-- **`turnover_series`**: `Series` — 每日因子 turnover（橫截面 rank 自相關）
+- **`ic_series`**: `pd.DataFrame` — 每日 Rank IC 時間序列（index=start_time）
+- **`ic_summary`**: `dict` — IC 統計摘要（`mean_ic`, `ic_std`, `ic_ir`, `t-stat`）
+- **`turnover_series`**: `pd.Series` — 每日因子 turnover（1 - rank autocorrelation，index=start_time）
 - **`turnover_mean`**: `float` — turnover 的平均值
-- **`quantile_returns`**: `DataFrame` — 各 quantile 的平均未來報酬
-- **`cumulative_returns`**: `DataFrame` — 各 quantile 的累計報酬（可選）
+- **`quantile_returns`**: `pd.DataFrame` — 各 quantile 的平均未來報酬（MultiIndex: start_time, quantile）
+- **`cumulative_returns`**: `pd.DataFrame | None` — 各 quantile 的累計報酬（可選）
 
-若指定 `output_dir`，會在該目錄下創建時間戳子目錄，並輸出：
+`FactorAnalysisResult` 提供以下便利方法：
+
+- **`to_dict()`**: 轉換為字典格式（向後相容）
+- **`save(output_dir)`**: 保存完整實驗結果到指定目錄（見下方說明）
+
+若指定 `output_dir`，會在該目錄下創建時間戳子目錄（格式：`YYYYMMDD_HHMMSS_{factor_name}/`），並輸出：
 
 - **CSV 檔案**：`ic_series.csv`、`ic_summary.csv`、`turnover.csv`、`quantile_returns.csv`、`cumulative_returns.csv`
-- **圖表**：`plots/` 子目錄下的 PNG 圖表（IC 時間序列、分佈、分層收益、累計收益、turnover）
+- **配置檔案**：`config.json`（包含實驗設定與 metadata）
+- **圖表**：`plots/` 子目錄下的 PNG 圖表（IC 時間序列、IC 分佈、分層收益、累計收益）
 
 ### 範例：對自訂因子進行評估
+
+#### 使用 Factor 作為價格數據
 
 ```python
 from factorium import AggBar, Factor
@@ -292,13 +300,11 @@ agg = loader.load_aggbar(...)
 close = agg["close"]          # 價格因子
 
 # 建立一個簡單的動量因子
-returns_1d = close.ts_delta(1) / close.ts_shift(1)
 momentum_20 = close.ts_delta(20) / close.ts_shift(20)
-factor = momentum_20
 
 # 跑評估並輸出結果
-result = factor.eval(
-    prices=close,
+result = momentum_20.eval(
+    prices=close,              # 傳入 Factor
     periods=1,
     quantiles=10,
     output_dir="./experiments",
@@ -306,6 +312,39 @@ result = factor.eval(
 
 print(result.ic_summary['mean_ic'])
 print(result.turnover_mean)
+```
+
+#### 使用 AggBar 作為價格數據
+
+```python
+# 直接傳入 AggBar，會自動使用 price_col 指定的欄位（預設 "close"）
+result = momentum_20.eval(
+    prices=agg,                # 傳入 AggBar
+    periods=1,
+    quantiles=5,
+    price_col="close",         # 指定價格欄位
+    output_dir="./experiments",
+)
+
+# 查看結果摘要
+print(result)
+# FactorAnalysisResult: momentum_20
+#   Periods: 1, Quantiles: 5
+#   Mean IC: 0.0234
+#   IC Std: 0.1456
+#   IC IR: 0.1607
+#   Turnover: 0.8234
+```
+
+#### 手動保存結果
+
+```python
+# 不指定 output_dir，先進行分析
+result = momentum_20.eval(prices=agg, periods=1)
+
+# 稍後再保存（例如根據條件決定是否保存）
+if result.ic_summary['ic_ir'] > 1.0:
+    result.save("./experiments")
 ```
 
 ---
