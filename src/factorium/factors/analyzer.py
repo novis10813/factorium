@@ -230,6 +230,43 @@ class FactorAnalyzer:
 
         return pd.DataFrame(summary)
 
+    def calculate_turnover(self) -> pd.Series:
+        """
+        Calculate factor turnover using rank autocorrelation.
+
+        Method:
+        1. For each start_time, calculate cross-sectional rank of factor values
+        2. Compute correlation between today's rank and yesterday's rank
+        3. turnover = 1 - rank_autocorrelation
+
+        Returns:
+            pd.Series: Turnover time series indexed by start_time
+        """
+        if not hasattr(self, "_clean_data"):
+            raise ValueError("Data not prepared. Call prepare_data() first.")
+
+        # Use Polars to calculate rank per start_time
+        df = self._clean_data.with_columns(
+            pl.col("factor").rank(method="average").over("start_time").alias("factor_rank")
+        )
+
+        # Normalize rank to percentile (0-1)
+        df = df.with_columns(((pl.col("factor_rank") - 1) / (pl.len().over("start_time") - 1)).alias("factor_rank_pct"))
+
+        # Convert to pandas for correlation calculation
+        df_pd = df.select(["start_time", "symbol", "factor_rank_pct"]).to_pandas()
+
+        # Pivot to wide format (start_time x symbol)
+        pivot = df_pd.pivot(index="start_time", columns="symbol", values="factor_rank_pct")
+
+        # Calculate rank autocorrelation (correlation with previous day)
+        rank_autocorr = pivot.corrwith(pivot.shift(1), axis=1)
+
+        # Turnover = 1 - autocorrelation
+        turnover = 1 - rank_autocorr
+
+        return turnover
+
     def calculate_quantile_returns(self, quantiles: int = 5, period: int = 1) -> pd.DataFrame:
         """
         Calculate mean returns for each factor quantile.

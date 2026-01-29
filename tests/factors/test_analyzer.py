@@ -201,3 +201,26 @@ def test_analyze_returns_dataclass(sample_data):
     assert result.periods == 1
     assert "mean_ic" in result.ic_summary
     assert hasattr(result, "to_dict")
+
+
+def test_calculate_turnover(sample_data):
+    """Test turnover calculation using rank autocorrelation."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+
+    # Prepare data first
+    analyzer.prepare_data(periods=[1])
+
+    # Calculate turnover
+    turnover_series = analyzer.calculate_turnover()
+
+    # Assertions
+    assert isinstance(turnover_series, pd.Series)
+    assert turnover_series.index.name == "start_time"
+    assert len(turnover_series) > 0
+    # Turnover should be between 0 and 2 (since 1 - (-1) = 2)
+    assert turnover_series.min() >= -0.1  # Allow small negative due to correlation
+    assert turnover_series.max() <= 2.1
