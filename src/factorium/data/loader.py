@@ -194,6 +194,16 @@ class BinanceDataLoader:
         if isinstance(symbols, str):
             symbols = [symbols]
 
+        # Check if this is klines data (bypass aggregation)
+        is_klines = data_type == "klines"
+        if is_klines:
+            # Klines doesn't support bar_type parameter - it's already OHLCV
+            if bar_type != "time":
+                raise ValueError(
+                    f"data_type='klines' only supports bar_type='time', got '{bar_type}'. "
+                    "Klines data is already aggregated OHLCV."
+                )
+
         # Validate: non-time bars only support single symbol
         if bar_type != "time" and len(symbols) > 1:
             raise ValueError(
@@ -212,7 +222,19 @@ class BinanceDataLoader:
             if missing:
                 self._download_missing_files(missing, data_type, market_type, futures_type)
 
-        # Initialize components
+        # ===== KLINES: Direct loading without aggregation =====
+        if is_klines:
+            return self._load_klines_direct(
+                symbols=symbols,
+                data_type=data_type,
+                market_type=market_type,
+                futures_type=futures_type,
+                start_dt=start_dt,
+                end_dt=end_dt,
+                interval_ms=int(interval),
+            )
+
+        # Initialize components (for trades/aggTrades aggregation)
         adapter = BinanceAdapter()
         aggregator = BarAggregator()
         cache = BarCache() if (use_cache and bar_type == "time") else None
@@ -579,3 +601,171 @@ class BinanceDataLoader:
             await asyncio.gather(*tasks)
 
         _run_async(download_all())
+
+    def _load_klines_direct(
+        self,
+        symbols: List[str],
+        data_type: str,
+        market_type: str,
+        futures_type: str,
+        start_dt: datetime,
+        end_dt: datetime,
+        interval_ms: int,
+    ) -> AggBar:
+        """Load klines data directly without aggregation.
+
+        Klines data is already in OHLCV format, so we just:
+        1. Load the Parquet files using DuckDB
+        2. Rename columns to match AggBar schema
+        3. Optionally resample to different intervals
+
+        Args:
+            symbols: List of symbols to load
+            data_type: Data type (must be "klines")
+            market_type: Market type (spot/futures)
+            futures_type: Futures type (cm/um)
+            start_dt: Start datetime
+            end_dt: End datetime
+            interval_ms: Target interval in milliseconds (for resampling)
+
+        Returns:
+            AggBar object containing klines OHLCV data
+        """
+        import duckdb
+
+        adapter = BinanceAdapter()
+        market_str = self._get_market_string(market_type, futures_type)
+
+        # Build parquet glob pattern
+        parquet_pattern = adapter.build_parquet_glob(
+            base_path=self.base_path,
+            symbols=symbols,
+            data_type=data_type,
+            market_type=market_type,
+            futures_type=futures_type,
+        )
+
+        start_ts = int(start_dt.timestamp() * 1000)
+        end_ts = int(end_dt.timestamp() * 1000)
+
+        # Load klines data using DuckDB
+        # Klines columns: open_time, open, high, low, close, volume, close_time,
+        #                 quote_volume, count, taker_buy_volume, taker_buy_quote_volume, ignore
+        # AggBar needs: start_time, end_time, symbol, open, high, low, close, volume,
+        #               quote_volume, count, taker_buy_volume, taker_buy_quote_volume
+
+        query = f"""
+        SELECT 
+            open_time as start_time,
+            close_time as end_time,
+            symbol,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            quote_volume,
+            count,
+            taker_buy_volume,
+            taker_buy_quote_volume
+        FROM read_parquet('{parquet_pattern}', hive_partitioning=true)
+        WHERE open_time >= {start_ts} AND close_time <= {end_ts}
+        ORDER BY open_time, symbol
+        """
+
+        con = duckdb.connect(":memory:")
+        df = con.execute(query).pl()
+        con.close()
+
+        if df.is_empty():
+            raise ValueError(
+                f"No data found for symbols={symbols}, data_type={data_type}, "
+                f"market_type={market_str}, date_range={start_dt.date()} to {end_dt.date()}"
+            )
+
+        # Resample if needed (interval_ms != 60000 means not 1m)
+        # Default klines is 1m (60000ms)
+        if interval_ms != 60_000:
+            df = self._resample_klines(df, interval_ms)
+
+        self.logger.info(
+            f"Loaded {len(df)} klines bars for {len(symbols)} symbols ({start_dt.date()} to {end_dt.date()})"
+        )
+
+        return AggBar(df)
+
+    def _resample_klines(self, df: pl.DataFrame, interval_ms: int) -> pl.DataFrame:
+        """Resample 1m klines to a different interval.
+
+        Args:
+            df: Polars DataFrame with 1m klines data
+            interval_ms: Target interval in milliseconds
+
+        Returns:
+            Resampled DataFrame
+        """
+        # Convert interval_ms to Polars duration string
+        # Examples: 60000 -> "1m", 300000 -> "5m", 3600000 -> "1h"
+        if interval_ms % 86400000 == 0:
+            interval_str = f"{interval_ms // 86400000}d"
+        elif interval_ms % 3600000 == 0:
+            interval_str = f"{interval_ms // 3600000}h"
+        elif interval_ms % 60000 == 0:
+            interval_str = f"{interval_ms // 60000}m"
+        else:
+            raise ValueError(
+                f"interval_ms={interval_ms} cannot be converted to standard time unit. Use multiples of 1m, 1h, or 1d."
+            )
+
+        # Group by symbol and time bucket for proper resampling
+        # For OHLCV: open=first, high=max, low=min, close=last, volume=sum
+        # For microstructure data: all sum
+        resampled = (
+            df.with_columns(
+                [
+                    pl.from_epoch("start_time", time_unit="ms").alias("start_dt"),
+                    pl.from_epoch("start_time", time_unit="ms").dt.truncate(interval_str).alias("time_bucket"),
+                ]
+            )
+            .sort(["symbol", "start_dt"])
+            .group_by(["symbol", "time_bucket"])
+            .agg(
+                [
+                    pl.col("start_dt").min().alias("start_dt"),
+                    pl.col("open").first().alias("open"),
+                    pl.col("high").max().alias("high"),
+                    pl.col("low").min().alias("low"),
+                    pl.col("close").last().alias("close"),
+                    pl.col("volume").sum().alias("volume"),
+                    pl.col("quote_volume").sum().alias("quote_volume"),
+                    pl.col("count").sum().alias("count"),
+                    pl.col("taker_buy_volume").sum().alias("taker_buy_volume"),
+                    pl.col("taker_buy_quote_volume").sum().alias("taker_buy_quote_volume"),
+                ]
+            )
+            .with_columns(
+                [
+                    pl.col("start_dt").dt.epoch("ms").alias("start_time"),
+                    (pl.col("start_dt").dt.epoch("ms") + interval_ms - 1).alias("end_time"),
+                ]
+            )
+            .select(
+                [
+                    "start_time",
+                    "end_time",
+                    "symbol",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "quote_volume",
+                    "count",
+                    "taker_buy_volume",
+                    "taker_buy_quote_volume",
+                ]
+            )
+            .sort(["start_time", "symbol"])
+        )
+
+        return resampled

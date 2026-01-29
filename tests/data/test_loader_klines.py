@@ -159,3 +159,81 @@ class TestLoadKlines:
 
         assert isinstance(result, AggBar)
         assert set(result.symbols) == {"BTCUSDT", "ETHUSDT"}
+
+    def test_klines_resample_to_5m(self, sample_klines_data):
+        """Test resampling 1m klines to 5m."""
+        loader = BinanceDataLoader(base_path=sample_klines_data)
+
+        with patch.object(loader, "_check_all_symbols_exist", return_value=True):
+            result_1m = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                start_date="2024-01-01",
+                days=1,
+                interval=60_000,  # 1m
+                use_cache=False,
+            )
+
+            result_5m = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                start_date="2024-01-01",
+                days=1,
+                interval=300_000,  # 5m
+                use_cache=False,
+            )
+
+        # 5m should have 1/5 the bars of 1m
+        assert len(result_5m) == len(result_1m) // 5
+
+    def test_klines_resample_to_1h(self, sample_klines_data):
+        """Test resampling 1m klines to 1h."""
+        loader = BinanceDataLoader(base_path=sample_klines_data)
+
+        with patch.object(loader, "_check_all_symbols_exist", return_value=True):
+            result_1m = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                start_date="2024-01-01",
+                days=1,
+                interval=60_000,  # 1m
+                use_cache=False,
+            )
+
+            result_1h = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                start_date="2024-01-01",
+                days=1,
+                interval=3_600_000,  # 1h
+                use_cache=False,
+            )
+
+        # 1h should have 1/60 the bars of 1m
+        assert len(result_1h) == len(result_1m) // 60
+
+    def test_klines_raises_on_non_time_bar_type(self, sample_klines_data):
+        """Test that klines raises error for non-time bar types."""
+        loader = BinanceDataLoader(base_path=sample_klines_data)
+
+        with patch.object(loader, "_check_all_symbols_exist", return_value=True):
+            with pytest.raises(ValueError, match="only supports bar_type='time'"):
+                loader.load_aggbar(
+                    symbols=["BTCUSDT"],
+                    data_type="klines",
+                    market_type="futures",
+                    futures_type="um",
+                    start_date="2024-01-01",
+                    days=1,
+                    bar_type="tick",  # Should fail
+                    interval=1000,
+                    use_cache=False,
+                )
