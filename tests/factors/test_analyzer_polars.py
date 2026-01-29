@@ -72,3 +72,21 @@ def test_calculate_quantile_returns_uses_polars_internally(sample_data):
         assert isinstance(q_ret, pd.DataFrame)
         # Should not use pandas groupby
         mock_groupby.assert_not_called()
+
+
+def test_prepare_data_validates_price_col(sample_data):
+    """Test that prepare_data raises clear error when price_col doesn't exist in AggBar."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+
+    # Create analyzer with AggBar as prices
+    analyzer = FactorAnalyzer(factor, agg)
+
+    # Try to use non-existent column
+    with pytest.raises(ValueError, match="Price column 'nonexistent' not found"):
+        analyzer.prepare_data(periods=[1], price_col="nonexistent")
+
+    # Should work with existing column
+    df = analyzer.prepare_data(periods=[1], price_col="close")
+    assert isinstance(df, pl.DataFrame)
+    assert len(df) > 0

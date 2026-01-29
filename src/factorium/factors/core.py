@@ -12,6 +12,7 @@ from .mixins.cs_ops import CrossSectionalOpsMixin
 
 if TYPE_CHECKING:
     from ..aggbar import AggBar
+    from .analyzer import FactorAnalysisResult
 
 
 class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFactor):
@@ -62,37 +63,44 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
 
     def eval(
         self,
-        prices: "Factor",
-        periods: List[int] = [1, 5, 10],
+        prices: Union["Factor", "AggBar"],
+        periods: int = 1,  # MVP 僅支援單一窗口
         quantiles: int = 5,
-        save_path: Optional[str] = None,
+        output_dir: Optional[str] = None,
+        price_col: str = "close",
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> "FactorAnalysisResult":
         """
-        Run a full evaluation report for the factor.
+        Evaluate factor's predictive power (Evaluation Layer).
 
         Args:
-            prices: A Factor object containing price data (e.g., close prices)
-            periods: List of holding periods to evaluate (e.g., [1, 5, 10] days)
-            quantiles: Number of quantiles for layer testing
-            save_path: Path to save the evaluation report plot (e.g., 'report.png')
-            **kwargs: Additional arguments passed to the evaluator
+            prices: Price data (Factor or AggBar)
+            periods: Prediction horizon (currently only supports single int)
+            quantiles: Number of quantiles for layer analysis (default 5)
+            output_dir: Experiment output directory (creates timestamped folder if specified)
+            price_col: Price column name (default "close")
 
         Returns:
-            Dictionary containing evaluation metrics:
-            - ic_mean: Mean IC for each period
-            - ic_ir: IC Information Ratio for each period
-            - turnover_mean: Average factor turnover
-            - layer_returns: Average returns for each quantile
-            - spread: Long-short spread (Top - Bottom quantile)
+            FactorAnalysisResult: Complete evaluation metrics including IC, ICIR, t-stat,
+                                  turnover, quantile returns, and cumulative returns
 
         Example:
-            >>> factor.eval(prices=close_factor, periods=[1, 5, 20], save_path='eval.png')
+            >>> momentum = ts_returns(close, 20)
+            >>> result = momentum.eval(prices, output_dir="./experiments")
+            >>> print(result.ic_summary)
+            {'mean_ic': 0.05, 'ic_ir': 1.2, 't_stat': 3.5, ...}
         """
-        from .evaluation import FactorEvaluator
+        from .analyzer import FactorAnalyzer
 
-        evaluator = FactorEvaluator(self, prices)
-        return evaluator.run_full_report(periods=periods, quantiles=quantiles, save_path=save_path, **kwargs)
+        analyzer = FactorAnalyzer(factor=self, prices=prices, quantiles=quantiles)
+
+        result = analyzer.analyze(price_col=price_col, periods=periods)
+
+        # Save results if output directory specified
+        if output_dir:
+            result.save(output_dir)
+
+        return result
 
     def plot(
         self,

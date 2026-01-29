@@ -35,6 +35,47 @@ ic_mean = result.ic_summary["mean_ic"]
 result_dict = result.to_dict()
 ```
 
+### 4. Factor.eval() API Changes
+
+**Breaking Changes:**
+
+- Return type changed from `Dict[str, Any]` to `FactorAnalysisResult`
+- Parameter `save_path` renamed to `output_dir`
+- Parameter `periods` changed from `List[int]` to `int` (MVP, single period only)
+
+**Migration:**
+
+```python
+# Before (v0.2.x)
+result = factor.eval(
+    prices=close,
+    periods=[1, 5, 10],
+    quantiles=5,
+    save_path="./report.png"
+)
+ic_mean = result["ic_mean"]  # dict access
+turnover = result["turnover_mean"]
+
+# After (v0.3.0+)
+result = factor.eval(
+    prices=close,  # or AggBar
+    periods=1,     # single int only (MVP)
+    quantiles=5,
+    output_dir="./experiments"  # creates timestamped folder
+)
+ic_mean = result.ic_summary["mean_ic"]  # FactorAnalysisResult access
+turnover = result.turnover_mean
+
+# For backward compatibility (dict format):
+result_dict = result.to_dict()
+```
+
+**New Features:**
+
+- `FactorAnalysisResult.save(output_dir)` method for experiment tracking
+- Support for `AggBar` as `prices` parameter (with `price_col` option)
+- Turnover metrics included in result (`turnover_series`, `turnover_mean`)
+
 ## New Features
 
 ### Constraints with normalize

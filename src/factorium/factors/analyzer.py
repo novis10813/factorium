@@ -22,15 +22,19 @@ class FactorAnalysisResult:
         quantiles: Number of quantiles used
         ic_series: Information Coefficient time series
         ic_summary: Summary statistics of IC (mean, std, ir, t-stat)
+        turnover_series: Turnover time series (1 - rank autocorrelation)
+        turnover_mean: Average turnover across all periods
         quantile_returns: Mean returns by quantile
         cumulative_returns: Cumulative returns by quantile (if available)
     """
 
     factor_name: str
-    periods: int
+    periods: Union[int, List[int]]  # MVP supports int only, list[int] reserved for future
     quantiles: int
     ic_series: pd.DataFrame
     ic_summary: Dict[str, float]
+    turnover_series: pd.Series
+    turnover_mean: float
     quantile_returns: pd.DataFrame
     cumulative_returns: Optional[pd.DataFrame] = None
 
@@ -42,6 +46,8 @@ class FactorAnalysisResult:
             "quantiles": self.quantiles,
             "ic_series": self.ic_series,
             "ic_summary": self.ic_summary,
+            "turnover_series": self.turnover_series,
+            "turnover_mean": self.turnover_mean,
             "quantile_returns": self.quantile_returns,
             "cumulative_returns": self.cumulative_returns,
         }
@@ -53,7 +59,113 @@ class FactorAnalysisResult:
   Mean IC: {ic.get("mean_ic", 0):.4f}
   IC Std: {ic.get("ic_std", 0):.4f}
   IC IR: {ic.get("ic_ir", 0):.4f}
+  Turnover: {self.turnover_mean:.4f}
 """
+
+    def save(self, output_dir: str) -> None:
+        """
+        Save analysis results to directory with timestamp.
+
+        Creates structure:
+        {output_dir}/
+        └── YYYYMMDD_HHMMSS_{factor_name}/
+            ├── config.json
+            ├── ic_series.csv
+            ├── ic_summary.csv
+            ├── turnover.csv
+            ├── quantile_returns.csv
+            ├── cumulative_returns.csv
+            └── plots/
+                ├── ic_distribution.png
+                ├── ic_timeseries.png
+                ├── quantile_returns.png
+                └── cumulative_returns.png
+
+        Args:
+            output_dir: Base directory for experiment outputs
+        """
+        from pathlib import Path
+        from datetime import datetime
+        import json
+        import matplotlib.pyplot as plt
+        from .plotting_analyzer import FactorAnalyzerPlotter
+
+        # Create timestamped folder
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder_name = f"{timestamp}_{self.factor_name}"
+        exp_path = Path(output_dir) / folder_name
+        exp_path.mkdir(parents=True, exist_ok=True)
+
+        # Create plots subdirectory
+        plots_path = exp_path / "plots"
+        plots_path.mkdir(exist_ok=True)
+
+        # Save CSV files
+        self.ic_series.to_csv(exp_path / "ic_series.csv")
+
+        # Convert ic_summary dict to DataFrame for CSV
+        ic_summary_df = pd.DataFrame([self.ic_summary])
+        ic_summary_df.to_csv(exp_path / "ic_summary.csv", index=False)
+
+        self.turnover_series.to_csv(exp_path / "turnover.csv", header=True)
+        self.quantile_returns.to_csv(exp_path / "quantile_returns.csv")
+
+        if self.cumulative_returns is not None:
+            self.cumulative_returns.to_csv(exp_path / "cumulative_returns.csv")
+
+        # Save plots
+        plotter = FactorAnalyzerPlotter()
+
+        # IC time series plot
+        try:
+            fig_ic_ts = plotter.plot_ic_ts(self.ic_series)
+            fig_ic_ts.savefig(plots_path / "ic_timeseries.png", dpi=150, bbox_inches="tight")
+            plt.close(fig_ic_ts)
+        except Exception as e:
+            logger.warning(f"Failed to generate IC timeseries plot: {e}")
+
+        # IC distribution plot
+        try:
+            fig_ic_hist = plotter.plot_ic_hist(self.ic_series)
+            fig_ic_hist.savefig(plots_path / "ic_distribution.png", dpi=150, bbox_inches="tight")
+            plt.close(fig_ic_hist)
+        except Exception as e:
+            logger.warning(f"Failed to generate IC distribution plot: {e}")
+
+        # Quantile returns plot
+        try:
+            fig_qret = plotter.plot_quantile_returns(self.quantile_returns)
+            fig_qret.savefig(plots_path / "quantile_returns.png", dpi=150, bbox_inches="tight")
+            plt.close(fig_qret)
+        except Exception as e:
+            logger.warning(f"Failed to generate quantile returns plot: {e}")
+
+        # Cumulative returns plot (if available)
+        if self.cumulative_returns is not None:
+            try:
+                fig_cumret = plotter.plot_cumulative_returns(self.cumulative_returns)
+                fig_cumret.savefig(plots_path / "cumulative_returns.png", dpi=150, bbox_inches="tight")
+                plt.close(fig_cumret)
+            except Exception as e:
+                logger.warning(f"Failed to generate cumulative returns plot: {e}")
+
+        # Save config.json
+        config = {
+            "factor_name": self.factor_name,
+            "periods": self.periods,
+            "quantiles": self.quantiles,
+            "created_at": datetime.now().isoformat(),
+            "data_range": {
+                "start": str(self.ic_series.index.min()),
+                "end": str(self.ic_series.index.max()),
+                "n_observations": len(self.ic_series),
+            },
+        }
+
+        with open(exp_path / "config.json", "w") as f:
+            json.dump(config, f, indent=2)
+
+        logger.info(f"Results saved to {exp_path}")
 
 
 class FactorAnalyzer:
@@ -106,12 +218,18 @@ class FactorAnalyzer:
         except Exception:
             cumulative_returns = None
 
+        # Calculate turnover
+        turnover_series = self.calculate_turnover()
+        turnover_mean = float(turnover_series.mean())
+
         return FactorAnalysisResult(
             factor_name=self.factor.name,
             periods=periods,
             quantiles=self.quantiles,
             ic_series=ic_series,
             ic_summary=ic_summary,
+            turnover_series=turnover_series,
+            turnover_mean=turnover_mean,
             quantile_returns=quantile_returns,
             cumulative_returns=cumulative_returns,
         )
@@ -138,6 +256,13 @@ class FactorAnalyzer:
 
         # Get price data
         if price_col is not None and isinstance(self._raw_prices, AggBar):
+            # Check if price_col exists in AggBar
+            if price_col not in self._raw_prices._data.columns:
+                available_cols = ", ".join(sorted(self._raw_prices._data.columns))
+                raise ValueError(
+                    f"Price column '{price_col}' not found in AggBar. "
+                    f"Available columns: {available_cols}"
+                )
             prices_lf = self._raw_prices.to_polars().lazy().select(["start_time", "end_time", "symbol", price_col])
             price_col_name = price_col
         elif self.prices is not None:
@@ -229,6 +354,43 @@ class FactorAnalyzer:
             }
 
         return pd.DataFrame(summary)
+
+    def calculate_turnover(self) -> pd.Series:
+        """
+        Calculate factor turnover using rank autocorrelation.
+
+        Method:
+        1. For each start_time, calculate cross-sectional rank of factor values
+        2. Compute correlation between today's rank and yesterday's rank
+        3. turnover = 1 - rank_autocorrelation
+
+        Returns:
+            pd.Series: Turnover time series indexed by start_time
+        """
+        if not hasattr(self, "_clean_data"):
+            raise ValueError("Data not prepared. Call prepare_data() first.")
+
+        # Ensure data is sorted by symbol and time for correct shift operation
+        sorted_data = self._clean_data.sort(["symbol", "start_time"])
+
+        # Calculate rank per start_time and get previous rank for each symbol
+        turnover_df = (
+            sorted_data.with_columns(pl.col("factor").rank(method="average").over("start_time").alias("factor_rank"))
+            .with_columns(
+                # Get previous period's rank for each symbol
+                pl.col("factor_rank").shift(1).over("symbol").alias("prev_rank")
+            )
+            .group_by("start_time")
+            .agg(
+                # Calculate correlation between current rank and previous rank
+                pl.corr("factor_rank", "prev_rank").alias("autocorr")
+            )
+            .select([pl.col("start_time"), (1 - pl.col("autocorr")).alias("turnover")])
+            .sort("start_time")
+        )
+
+        # Convert to pandas Series only at the end
+        return turnover_df.to_pandas().set_index("start_time")["turnover"]
 
     def calculate_quantile_returns(self, quantiles: int = 5, period: int = 1) -> pd.DataFrame:
         """
