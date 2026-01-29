@@ -648,6 +648,14 @@ class BinanceDataLoader:
         start_ts = int(start_dt.timestamp() * 1000)
         end_ts = int(end_dt.timestamp() * 1000)
 
+        # Validate timestamp values for SQL safety
+        if not isinstance(start_ts, int) or not isinstance(end_ts, int):
+            raise ValueError(f"Invalid timestamp values: start_ts={start_ts}, end_ts={end_ts}")
+        if start_ts < 0 or end_ts < 0:
+            raise ValueError(f"Timestamp values must be non-negative: start_ts={start_ts}, end_ts={end_ts}")
+        if start_ts > end_ts:
+            raise ValueError(f"start_ts must be <= end_ts: start_ts={start_ts}, end_ts={end_ts}")
+
         # Load klines data using DuckDB
         # Klines columns: open_time, open, high, low, close, volume, close_time,
         #                 quote_volume, count, taker_buy_volume, taker_buy_quote_volume, ignore
@@ -731,7 +739,7 @@ class BinanceDataLoader:
             .group_by(["symbol", "time_bucket"])
             .agg(
                 [
-                    pl.col("start_dt").min().alias("start_dt"),
+                    pl.col("time_bucket").first().alias("start_dt"),
                     pl.col("open").first().alias("open"),
                     pl.col("high").max().alias("high"),
                     pl.col("low").min().alias("low"),
