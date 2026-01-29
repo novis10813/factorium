@@ -245,11 +245,12 @@ class FactorAnalyzer:
         if not hasattr(self, "_clean_data"):
             raise ValueError("Data not prepared. Call prepare_data() first.")
 
+        # Ensure data is sorted by symbol and time for correct shift operation
+        sorted_data = self._clean_data.sort(["symbol", "start_time"])
+
         # Calculate rank per start_time and get previous rank for each symbol
         turnover_df = (
-            self._clean_data.with_columns(
-                pl.col("factor").rank(method="average").over("start_time").alias("factor_rank")
-            )
+            sorted_data.with_columns(pl.col("factor").rank(method="average").over("start_time").alias("factor_rank"))
             .with_columns(
                 # Get previous period's rank for each symbol
                 pl.col("factor_rank").shift(1).over("symbol").alias("prev_rank")
