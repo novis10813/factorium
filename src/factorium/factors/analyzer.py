@@ -22,6 +22,8 @@ class FactorAnalysisResult:
         quantiles: Number of quantiles used
         ic_series: Information Coefficient time series
         ic_summary: Summary statistics of IC (mean, std, ir, t-stat)
+        turnover_series: Turnover time series (1 - rank autocorrelation)
+        turnover_mean: Average turnover across all periods
         quantile_returns: Mean returns by quantile
         cumulative_returns: Cumulative returns by quantile (if available)
     """
@@ -31,6 +33,8 @@ class FactorAnalysisResult:
     quantiles: int
     ic_series: pd.DataFrame
     ic_summary: Dict[str, float]
+    turnover_series: pd.Series
+    turnover_mean: float
     quantile_returns: pd.DataFrame
     cumulative_returns: Optional[pd.DataFrame] = None
 
@@ -42,6 +46,8 @@ class FactorAnalysisResult:
             "quantiles": self.quantiles,
             "ic_series": self.ic_series,
             "ic_summary": self.ic_summary,
+            "turnover_series": self.turnover_series,
+            "turnover_mean": self.turnover_mean,
             "quantile_returns": self.quantile_returns,
             "cumulative_returns": self.cumulative_returns,
         }
@@ -53,6 +59,7 @@ class FactorAnalysisResult:
   Mean IC: {ic.get("mean_ic", 0):.4f}
   IC Std: {ic.get("ic_std", 0):.4f}
   IC IR: {ic.get("ic_ir", 0):.4f}
+  Turnover: {self.turnover_mean:.4f}
 """
 
 
@@ -106,12 +113,18 @@ class FactorAnalyzer:
         except Exception:
             cumulative_returns = None
 
+        # Calculate turnover
+        turnover_series = self.calculate_turnover()
+        turnover_mean = float(turnover_series.mean())
+
         return FactorAnalysisResult(
             factor_name=self.factor.name,
             periods=periods,
             quantiles=self.quantiles,
             ic_series=ic_series,
             ic_summary=ic_summary,
+            turnover_series=turnover_series,
+            turnover_mean=turnover_mean,
             quantile_returns=quantile_returns,
             cumulative_returns=cumulative_returns,
         )

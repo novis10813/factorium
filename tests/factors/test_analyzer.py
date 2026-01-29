@@ -224,3 +224,25 @@ def test_calculate_turnover(sample_data):
     # Turnover should be between 0 and 2 (since 1 - (-1) = 2)
     assert turnover_series.min() >= -0.1  # Allow small negative due to correlation
     assert turnover_series.max() <= 2.1
+
+
+def test_analysis_result_has_turnover_fields(sample_data):
+    """Test that FactorAnalysisResult includes turnover fields."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+
+    result = analyzer.analyze(periods=1)
+
+    # Check turnover fields exist
+    assert hasattr(result, "turnover_series")
+    assert hasattr(result, "turnover_mean")
+
+    # Check types
+    assert isinstance(result.turnover_series, pd.Series)
+    assert isinstance(result.turnover_mean, (float, np.floating))
+
+    # Check values are reasonable
+    assert not np.isnan(result.turnover_mean)
