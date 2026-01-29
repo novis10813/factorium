@@ -184,6 +184,7 @@ def load_aggbar(
         symbols=["BTCUSDT"],
         data_type="klines",
         market_type="futures",
+        futures_type="um",
         start_date="2024-01-01",
         days=7,
         interval=300_000,  # 5 分鐘
@@ -194,6 +195,7 @@ def load_aggbar(
         symbols=["BTCUSDT"],
         data_type="klines",
         market_type="futures",
+        futures_type="um",
         start_date="2024-01-01",
         days=7,
         interval=3_600_000,  # 1 小時
