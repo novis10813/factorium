@@ -42,6 +42,84 @@ def _run_async(coro):
             return future.result()
 
 
+# Timestamp digit thresholds for unit detection
+TIMESTAMP_DIGITS_NS = 19  # nanoseconds: 19+ digits
+TIMESTAMP_DIGITS_US = 16  # microseconds: 16+ digits
+TIMESTAMP_DIGITS_MS = 13  # milliseconds: 13+ digits
+# seconds: <13 digits
+
+
+def _detect_timestamp_unit(sample_ts: int) -> str:
+    """Detect timestamp unit based on digit count.
+
+    Returns:
+        'ns' for nanoseconds (19 digits)
+        'us' for microseconds (16 digits)
+        'ms' for milliseconds (13 digits)
+        's' for seconds (10 digits)
+    """
+    ts_digits = len(str(abs(sample_ts)))
+    if ts_digits >= TIMESTAMP_DIGITS_NS:
+        return "ns"
+    elif ts_digits >= TIMESTAMP_DIGITS_US:
+        return "us"
+    elif ts_digits >= TIMESTAMP_DIGITS_MS:
+        return "ms"
+    else:
+        return "s"
+
+
+def _convert_to_target_unit(ts_ms: int, target_unit: str) -> int:
+    """Convert millisecond timestamp to target unit."""
+    if target_unit == "ns":
+        return ts_ms * 1_000_000
+    elif target_unit == "us":
+        return ts_ms * 1_000
+    elif target_unit == "ms":
+        return ts_ms
+    elif target_unit == "s":
+        return ts_ms // 1000
+    else:
+        raise ValueError(f"Unsupported target unit: {target_unit}")
+
+
+def _normalize_timestamps_to_ms(df: pl.DataFrame, ts_unit: str) -> pl.DataFrame:
+    """Normalize start_time and end_time columns to milliseconds.
+
+    Args:
+        df: Polars DataFrame with start_time and end_time columns
+        ts_unit: The detected timestamp unit ('s', 'ms', 'us', 'ns')
+
+    Returns:
+        DataFrame with timestamps normalized to milliseconds
+    """
+    if ts_unit == "ms":
+        return df
+    elif ts_unit == "us":
+        return df.with_columns(
+            [
+                (pl.col("start_time") // 1000).alias("start_time"),
+                (pl.col("end_time") // 1000).alias("end_time"),
+            ]
+        )
+    elif ts_unit == "ns":
+        return df.with_columns(
+            [
+                (pl.col("start_time") // 1_000_000).alias("start_time"),
+                (pl.col("end_time") // 1_000_000).alias("end_time"),
+            ]
+        )
+    elif ts_unit == "s":
+        return df.with_columns(
+            [
+                (pl.col("start_time") * 1000).alias("start_time"),
+                (pl.col("end_time") * 1000).alias("end_time"),
+            ]
+        )
+    else:
+        raise ValueError(f"Unsupported timestamp unit: {ts_unit}")
+
+
 from ..aggbar import AggBar
 from .adapters.binance import BinanceAdapter
 from .aggregator import BarAggregator
@@ -616,8 +694,15 @@ class BinanceDataLoader:
 
         Klines data is already in OHLCV format, so we just:
         1. Load the Parquet files using DuckDB
-        2. Rename columns to match AggBar schema
-        3. Optionally resample to different intervals
+        2. Auto-detect timestamp unit (s/ms/us/ns) and normalize to milliseconds
+        3. Rename columns to match AggBar schema
+        4. Optionally resample to different intervals
+
+        Note:
+            Timestamps are automatically detected based on digit count and
+            normalized to milliseconds for consistent downstream processing.
+            This ensures compatibility with data from different sources that
+            may use different timestamp formats.
 
         Args:
             symbols: List of symbols to load
@@ -629,7 +714,7 @@ class BinanceDataLoader:
             interval_ms: Target interval in milliseconds (for resampling)
 
         Returns:
-            AggBar object containing klines OHLCV data
+            AggBar object containing klines OHLCV data with timestamps in milliseconds
         """
         import duckdb
 
@@ -645,16 +730,39 @@ class BinanceDataLoader:
             futures_type=futures_type,
         )
 
-        start_ts = int(start_dt.timestamp() * 1000)
+        # Detect timestamp unit from data
+        # Use a single DuckDB connection for all queries
+        con = duckdb.connect(":memory:")
+
+        sample_query = f"""
+            SELECT open_time 
+            FROM read_parquet('{parquet_pattern}', hive_partitioning=true) 
+            LIMIT 1
+        """
+        sample_result = con.execute(sample_query).fetchone()
+        if sample_result is None:
+            raise ValueError(f"No data found for the given parquet pattern: {parquet_pattern}")
+        sample_ts = sample_result[0]
+        ts_unit = _detect_timestamp_unit(sample_ts)
+
+        start_ts = int(start_dt.timestamp() * 1000)  # Keep as milliseconds initially
         end_ts = int(end_dt.timestamp() * 1000)
 
+        # Convert to target unit for query
+        start_ts_query = _convert_to_target_unit(start_ts, ts_unit)
+        end_ts_query = _convert_to_target_unit(end_ts, ts_unit)
+
         # Validate timestamp values for SQL safety
-        if not isinstance(start_ts, int) or not isinstance(end_ts, int):
-            raise ValueError(f"Invalid timestamp values: start_ts={start_ts}, end_ts={end_ts}")
-        if start_ts < 0 or end_ts < 0:
-            raise ValueError(f"Timestamp values must be non-negative: start_ts={start_ts}, end_ts={end_ts}")
-        if start_ts > end_ts:
-            raise ValueError(f"start_ts must be <= end_ts: start_ts={start_ts}, end_ts={end_ts}")
+        if not isinstance(start_ts_query, int) or not isinstance(end_ts_query, int):
+            raise ValueError(f"Invalid timestamp values: start_ts_query={start_ts_query}, end_ts_query={end_ts_query}")
+        if start_ts_query < 0 or end_ts_query < 0:
+            raise ValueError(
+                f"Timestamp values must be non-negative: start_ts_query={start_ts_query}, end_ts_query={end_ts_query}"
+            )
+        if start_ts_query > end_ts_query:
+            raise ValueError(
+                f"start_ts_query must be <= end_ts_query: start_ts_query={start_ts_query}, end_ts_query={end_ts_query}"
+            )
 
         # Load klines data using DuckDB
         # Klines columns: open_time, open, high, low, close, volume, close_time,
@@ -677,11 +785,10 @@ class BinanceDataLoader:
             taker_buy_volume,
             taker_buy_quote_volume
         FROM read_parquet('{parquet_pattern}', hive_partitioning=true)
-        WHERE open_time >= {start_ts} AND close_time <= {end_ts}
+        WHERE open_time >= {start_ts_query} AND close_time <= {end_ts_query}
         ORDER BY open_time, symbol
         """
 
-        con = duckdb.connect(":memory:")
         df = con.execute(query).pl()
         con.close()
 
@@ -690,6 +797,9 @@ class BinanceDataLoader:
                 f"No data found for symbols={symbols}, data_type={data_type}, "
                 f"market_type={market_str}, date_range={start_dt.date()} to {end_dt.date()}"
             )
+
+        # Normalize timestamps to milliseconds for consistent downstream processing
+        df = _normalize_timestamps_to_ms(df, ts_unit)
 
         # Resample if needed (interval_ms != 60000 means not 1m)
         # Default klines is 1m (60000ms)
