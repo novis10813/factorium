@@ -42,6 +42,38 @@ def _run_async(coro):
             return future.result()
 
 
+def _detect_timestamp_unit(sample_ts: int) -> str:
+    """Detect timestamp unit based on digit count.
+
+    Returns:
+        'ns' for nanoseconds (19 digits)
+        'us' for microseconds (16 digits)
+        'ms' for milliseconds (13 digits)
+        's' for seconds (10 digits)
+    """
+    ts_digits = len(str(abs(sample_ts)))
+    if ts_digits >= 19:
+        return "ns"
+    elif ts_digits >= 16:
+        return "us"
+    elif ts_digits >= 13:
+        return "ms"
+    else:
+        return "s"
+
+
+def _convert_to_target_unit(ts_ms: int, target_unit: str) -> int:
+    """Convert millisecond timestamp to target unit."""
+    if target_unit == "ns":
+        return ts_ms * 1_000_000
+    elif target_unit == "us":
+        return ts_ms * 1_000
+    elif target_unit == "ms":
+        return ts_ms
+    else:  # seconds
+        return ts_ms // 1000
+
+
 from ..aggbar import AggBar
 from .adapters.binance import BinanceAdapter
 from .aggregator import BarAggregator
