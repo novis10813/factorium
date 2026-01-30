@@ -17,7 +17,7 @@ from factorium.aggbar import AggBar
 
 @pytest.fixture
 def sample_klines_data():
-    """Create temporary directory with Hive-partitioned klines Parquet files."""
+    """Create temporary directory with Hive-partitioned klines Parquet files using millisecond timestamps."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -36,17 +36,65 @@ def sample_klines_data():
 
                 # Klines data: 1440 bars per day (1 minute bars)
                 n_bars = 1440
-                base_ts = int(datetime(2024, 1, day).timestamp() * 1000)
+                base_ts = int(datetime(2024, 1, day).timestamp() * 1000)  # milliseconds
 
                 df = pd.DataFrame(
                     {
-                        "open_time": base_ts + np.arange(n_bars) * 60000,
+                        "open_time": base_ts + np.arange(n_bars) * 60000,  # 60 seconds in milliseconds
                         "open": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1),
                         "high": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1) + 0.5,
                         "low": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1) - 0.5,
                         "close": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1),
                         "volume": np.abs(np.random.randn(n_bars)) * 100 + 10,
-                        "close_time": base_ts + np.arange(n_bars) * 60000 + 59999,
+                        "close_time": base_ts + np.arange(n_bars) * 60000 + 59999,  # milliseconds
+                        "quote_volume": np.abs(np.random.randn(n_bars)) * 1000,
+                        "count": np.random.randint(10, 100, n_bars),
+                        "taker_buy_volume": np.abs(np.random.randn(n_bars)) * 50,
+                        "taker_buy_quote_volume": np.abs(np.random.randn(n_bars)) * 500,
+                        "ignore": np.zeros(n_bars),
+                    }
+                )
+
+                table = pa.Table.from_pandas(df)
+                pq.write_table(table, partition_path / "data.parquet")
+
+        yield tmpdir
+
+
+@pytest.fixture
+def sample_klines_data_microseconds():
+    """Create temporary directory with Hive-partitioned klines Parquet files using microsecond timestamps."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        for symbol in ["BTCUSDT", "ETHUSDT"]:
+            for day in [1, 2, 3]:
+                partition_path = (
+                    tmpdir
+                    / "market=futures_um"
+                    / "data_type=klines"
+                    / f"symbol={symbol}"
+                    / "year=2024"
+                    / "month=01"
+                    / f"day={day:02d}"
+                )
+                partition_path.mkdir(parents=True, exist_ok=True)
+
+                # Klines data: 1440 bars per day (1 minute bars)
+                n_bars = 1440
+                base_ts = int(datetime(2024, 1, day).timestamp() * 1_000_000)  # microseconds
+
+                df = pd.DataFrame(
+                    {
+                        "open_time": base_ts + np.arange(n_bars) * 60_000_000,  # 60 seconds in microseconds
+                        "open": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1),
+                        "high": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1) + 0.5,
+                        "low": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1) - 0.5,
+                        "close": 100.0 + np.cumsum(np.random.randn(n_bars) * 0.1),
+                        "volume": np.abs(np.random.randn(n_bars)) * 100 + 10,
+                        "close_time": base_ts
+                        + np.arange(n_bars) * 60_000_000
+                        + 59_999_999,  # 59.999999 seconds in microseconds
                         "quote_volume": np.abs(np.random.randn(n_bars)) * 1000,
                         "count": np.random.randint(10, 100, n_bars),
                         "taker_buy_volume": np.abs(np.random.randn(n_bars)) * 50,
@@ -237,3 +285,82 @@ class TestLoadKlines:
                     interval=1000,
                     use_cache=False,
                 )
+
+    def test_load_aggbar_klines_auto_detects_timestamp_unit(self, sample_klines_data_microseconds):
+        """Verify klines loading auto-detects and handles microsecond timestamps."""
+        tmpdir = sample_klines_data_microseconds
+        loader = BinanceDataLoader(base_path=tmpdir)
+
+        with patch.object(loader, "_check_all_symbols_exist", return_value=True):
+            result = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                start_date="2024-01-01",
+                days=3,
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+            )
+        # Should return data, not empty
+        assert len(result) > 0
+
+    def test_load_aggbar_klines_microseconds_with_resample(self, sample_klines_data_microseconds):
+        """Verify resampling works correctly with microsecond timestamps.
+
+        This test ensures that timestamps are properly normalized to milliseconds
+        before resampling, which assumes millisecond timestamps.
+        """
+        tmpdir = sample_klines_data_microseconds
+        loader = BinanceDataLoader(base_path=tmpdir)
+
+        with patch.object(loader, "_check_all_symbols_exist", return_value=True):
+            # Load 1m data
+            result_1m = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                start_date="2024-01-01",
+                days=1,
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                interval=60_000,  # 1m
+                use_cache=False,
+            )
+
+            # Resample to 5m
+            result_5m = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                start_date="2024-01-01",
+                days=1,
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                interval=300_000,  # 5m
+                use_cache=False,
+            )
+
+        # Verify data was loaded and resampled correctly
+        assert len(result_1m) > 0
+        assert len(result_5m) > 0
+        # 5m should have 1/5 the bars of 1m
+        assert len(result_5m) == len(result_1m) // 5
+
+    def test_load_aggbar_klines_timestamps_normalized_to_ms(self, sample_klines_data_microseconds):
+        """Verify that output timestamps are normalized to milliseconds."""
+        tmpdir = sample_klines_data_microseconds
+        loader = BinanceDataLoader(base_path=tmpdir)
+
+        with patch.object(loader, "_check_all_symbols_exist", return_value=True):
+            result = loader.load_aggbar(
+                symbols=["BTCUSDT"],
+                start_date="2024-01-01",
+                days=1,
+                data_type="klines",
+                market_type="futures",
+                futures_type="um",
+                use_cache=False,
+            )
+
+        # Get the first timestamp from the internal data
+        first_ts = result._data["start_time"][0]
+
+        # Should be 13 digits (milliseconds), not 16 (microseconds)
+        assert len(str(first_ts)) == 13, f"Expected 13 digits (ms), got {len(str(first_ts))} digits"
