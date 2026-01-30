@@ -677,16 +677,36 @@ class BinanceDataLoader:
             futures_type=futures_type,
         )
 
-        start_ts = int(start_dt.timestamp() * 1000)
+        # Detect timestamp unit from data
+        sample_query = f"""
+            SELECT open_time 
+            FROM read_parquet('{parquet_pattern}', hive_partitioning=true) 
+            LIMIT 1
+        """
+        sample_result = duckdb.execute(sample_query).fetchone()
+        if sample_result is None:
+            raise ValueError(f"No data found for the given parquet pattern: {parquet_pattern}")
+        sample_ts = sample_result[0]
+        ts_unit = _detect_timestamp_unit(sample_ts)
+
+        start_ts = int(start_dt.timestamp() * 1000)  # Keep as milliseconds initially
         end_ts = int(end_dt.timestamp() * 1000)
 
+        # Convert to target unit for query
+        start_ts_query = _convert_to_target_unit(start_ts, ts_unit)
+        end_ts_query = _convert_to_target_unit(end_ts, ts_unit)
+
         # Validate timestamp values for SQL safety
-        if not isinstance(start_ts, int) or not isinstance(end_ts, int):
-            raise ValueError(f"Invalid timestamp values: start_ts={start_ts}, end_ts={end_ts}")
-        if start_ts < 0 or end_ts < 0:
-            raise ValueError(f"Timestamp values must be non-negative: start_ts={start_ts}, end_ts={end_ts}")
-        if start_ts > end_ts:
-            raise ValueError(f"start_ts must be <= end_ts: start_ts={start_ts}, end_ts={end_ts}")
+        if not isinstance(start_ts_query, int) or not isinstance(end_ts_query, int):
+            raise ValueError(f"Invalid timestamp values: start_ts_query={start_ts_query}, end_ts_query={end_ts_query}")
+        if start_ts_query < 0 or end_ts_query < 0:
+            raise ValueError(
+                f"Timestamp values must be non-negative: start_ts_query={start_ts_query}, end_ts_query={end_ts_query}"
+            )
+        if start_ts_query > end_ts_query:
+            raise ValueError(
+                f"start_ts_query must be <= end_ts_query: start_ts_query={start_ts_query}, end_ts_query={end_ts_query}"
+            )
 
         # Load klines data using DuckDB
         # Klines columns: open_time, open, high, low, close, volume, close_time,
@@ -709,7 +729,7 @@ class BinanceDataLoader:
             taker_buy_volume,
             taker_buy_quote_volume
         FROM read_parquet('{parquet_pattern}', hive_partitioning=true)
-        WHERE open_time >= {start_ts} AND close_time <= {end_ts}
+        WHERE open_time >= {start_ts_query} AND close_time <= {end_ts_query}
         ORDER BY open_time, symbol
         """
 
