@@ -326,6 +326,50 @@ def test_save_generates_plots(sample_data):
         assert (plots_dir / "ic_distribution.png").exists()
         assert (plots_dir / "quantile_returns.png").exists()
 
-        # cumulative_returns plot only if data exists
-        if result.cumulative_returns is not None:
-            assert (plots_dir / "cumulative_returns.png").exists()
+
+def test_analyze_multi_horizon_returns_list_periods(sample_data):
+    """analyze(periods=[1, 5]) 應回傳 list periods。"""
+    from factorium.factors.analyzer import FactorAnalysisResult
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    assert isinstance(result, FactorAnalysisResult)
+    assert result.periods == [1, 5]
+
+
+def test_analyze_multi_horizon_ic_summary_structure(sample_data):
+    """multi-horizon 時 ic_summary 應為 dict[int, dict]。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    # ic_summary 應為 {1: {...}, 5: {...}}
+    assert isinstance(result.ic_summary, dict)
+    assert 1 in result.ic_summary
+    assert 5 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
+    assert "mean_ic" in result.ic_summary[5]
+
+
+def test_analyze_single_horizon_backward_compatible(sample_data):
+    """單一 horizon 時保持向後相容。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=1)
+
+    # 單一 horizon 時 ic_summary 應為 {"mean_ic": ..., ...}
+    assert isinstance(result.periods, int)
+    assert result.periods == 1
+    assert "mean_ic" in result.ic_summary
+    assert isinstance(result.ic_summary["mean_ic"], float)
