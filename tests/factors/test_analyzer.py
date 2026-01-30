@@ -390,3 +390,39 @@ def test_repr_multi_horizon(sample_data):
     # 應該有多個 period 的 IC 資訊
     assert "Period 1" in repr_str
     assert "Period 5" in repr_str
+
+
+def test_save_multi_horizon_creates_per_period_files(sample_data):
+    """multi-horizon save 應為每個 period 建立 quantile_returns 檔案。"""
+    import tempfile
+    from pathlib import Path
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=2)
+    result = analyzer.analyze(periods=[1, 5])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        assert len(exp_dirs) == 1
+        exp_dir = exp_dirs[0]
+
+        # 應有 quantile_returns_period_1.csv, quantile_returns_period_5.csv
+        assert (exp_dir / "quantile_returns_period_1.csv").exists()
+        assert (exp_dir / "quantile_returns_period_5.csv").exists()
+
+        # 應有 ic_summary.csv 包含多行
+        ic_summary_path = exp_dir / "ic_summary.csv"
+        assert ic_summary_path.exists()
+
+        # 應有 config.json 包含 periods
+        config_path = exp_dir / "config.json"
+        assert config_path.exists()
+        import json
+
+        with open(config_path) as f:
+            config = json.load(f)
+        assert config["periods"] == [1, 5]
