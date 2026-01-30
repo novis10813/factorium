@@ -189,6 +189,15 @@ class FactorAnalysisResult:
             except Exception as e:
                 logger.warning(f"Failed to generate cumulative returns plot: {e}")
 
+        # IC decay plot (multi-horizon only)
+        if isinstance(self.periods, list) and len(self.periods) > 1:
+            try:
+                fig_decay = plotter.plot_ic_decay(self.ic_summary)
+                fig_decay.savefig(plots_path / "ic_decay.png", dpi=150, bbox_inches="tight")
+                plt.close(fig_decay)
+            except Exception as e:
+                logger.warning(f"Failed to generate IC decay plot: {e}")
+
         # Save config.json
         config = {
             "factor_name": self.factor_name,

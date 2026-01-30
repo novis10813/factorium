@@ -424,16 +424,22 @@ def test_save_multi_horizon_creates_per_period_files(sample_data):
         import json
 
 
-def test_plot_ic_decay(sample_data):
-    """multi-horizon 應支援 plot_ic_decay() 繪製 IC decay 曲線。"""
-    import matplotlib.figure as mpl_figure
+def test_save_multi_horizon_includes_ic_decay_plot(sample_data):
+    """multi-horizon save 應包含 ic_decay.png。"""
+    import tempfile
+    from pathlib import Path
 
     agg = AggBar(sample_data)
     factor = agg["my_factor"]
     prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=2)
+    result = analyzer.analyze(periods=[1, 3, 5])
 
-    analyzer = FactorAnalyzer(factor, prices)
-    analyzer.prepare_data(periods=[1, 3, 5])
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
 
-    fig = analyzer.plot_ic_decay(periods=[1, 3, 5])
-    assert isinstance(fig, mpl_figure.Figure)
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        exp_dir = exp_dirs[0]
+        plots_dir = exp_dir / "plots"
+
+        assert (plots_dir / "ic_decay.png").exists()
