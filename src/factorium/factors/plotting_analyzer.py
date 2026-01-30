@@ -2,7 +2,7 @@
 Plotting utilities for FactorAnalyzer.
 """
 
-from typing import Tuple
+from typing import Tuple, Dict
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.figure as mpl_figure
@@ -97,4 +97,41 @@ class FactorAnalyzerPlotter:
         ax.set_ylabel("Cumulative Return")
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
+        return fig
+
+    def plot_ic_decay(self, ic_summary: Dict[int, Dict[str, float]]) -> mpl_figure.Figure:
+        """
+        Plot IC decay curve across horizons.
+
+        Args:
+            ic_summary: Dict mapping period -> {"mean_ic": float, "ic_ir": float, ...}
+
+        Returns:
+            matplotlib Figure
+        """
+        periods = sorted(ic_summary.keys())
+        mean_ics = [ic_summary[p]["mean_ic"] for p in periods]
+        ic_irs = [ic_summary[p]["ic_ir"] for p in periods]
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        # Mean IC decay
+        ax1.bar(range(len(periods)), mean_ics, color="steelblue", alpha=0.7)
+        ax1.set_xticks(range(len(periods)))
+        ax1.set_xticklabels([str(p) for p in periods])
+        ax1.set_xlabel("Horizon (periods)")
+        ax1.set_ylabel("Mean IC")
+        ax1.set_title("IC Decay by Horizon")
+        ax1.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+
+        # IC IR decay
+        ax2.bar(range(len(periods)), ic_irs, color="darkorange", alpha=0.7)
+        ax2.set_xticks(range(len(periods)))
+        ax2.set_xticklabels([str(p) for p in periods])
+        ax2.set_xlabel("Horizon (periods)")
+        ax2.set_ylabel("IC IR")
+        ax2.set_title("IC Information Ratio by Horizon")
+        ax2.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+
+        fig.tight_layout()
         return fig

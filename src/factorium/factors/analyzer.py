@@ -572,3 +572,38 @@ class FactorAnalyzer:
         cum_ret = self.calculate_cumulative_returns(quantiles=quantiles, period=period, long_short=long_short)
         plotter = FactorAnalyzerPlotter()
         return plotter.plot_cumulative_returns(cum_ret)
+
+    def plot_ic_decay(self, periods: Optional[List[int]] = None, method: str = "rank") -> mpl_figure.Figure:
+        """
+        Plot IC decay curve across multiple horizons.
+
+        Args:
+            periods: List of periods to plot. If None, uses all available periods.
+            method: 'rank' for Spearman, 'normal' for Pearson.
+
+        Returns:
+            matplotlib Figure
+        """
+        from .plotting_analyzer import FactorAnalyzerPlotter
+
+        ic_summary_df = self.calculate_ic_summary(method=method)
+
+        # Build ic_summary dict for plotting
+        if periods is None:
+            # Extract periods from available columns
+            periods = [int(c.replace("period_", "")) for c in ic_summary_df.columns if c.startswith("period_")]
+
+        ic_summary = {}
+        for p in periods:
+            col = f"period_{p}"
+            if col in ic_summary_df.columns:
+                ic_summary[p] = {
+                    "mean_ic": float(ic_summary_df.loc["mean", col]),
+                    "ic_ir": float(ic_summary_df.loc["ic_ir", col]),
+                }
+
+        if not ic_summary:
+            raise ValueError("No IC data available for the specified periods.")
+
+        plotter = FactorAnalyzerPlotter()
+        return plotter.plot_ic_decay(ic_summary)
