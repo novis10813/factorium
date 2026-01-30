@@ -373,3 +373,20 @@ def test_analyze_single_horizon_backward_compatible(sample_data):
     assert result.periods == 1
     assert "mean_ic" in result.ic_summary
     assert isinstance(result.ic_summary["mean_ic"], float)
+
+
+def test_repr_multi_horizon(sample_data):
+    """multi-horizon __repr__ 應顯示所有 period 的 IC。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    repr_str = repr(result)
+    assert "my_factor" in repr_str
+    assert "[1, 5]" in repr_str
+    # 應該有多個 period 的 IC 資訊
+    assert "Period 1" in repr_str
+    assert "Period 5" in repr_str

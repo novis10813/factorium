@@ -59,26 +59,25 @@ class FactorAnalysisResult:
         }
 
     def __repr__(self) -> str:
-        periods_str = str(self.periods) if isinstance(self.periods, list) else self.periods
-        ic = self.ic_summary
-        if isinstance(ic, dict) and isinstance(self.periods, int):
-            # Single horizon
-            mean_ic = ic.get("mean_ic", 0)
-            ic_std = ic.get("ic_std", 0)
-            ic_ir = ic.get("ic_ir", 0)
-        else:
-            # Multi-horizon: show first period's IC
-            first_period = min(ic.keys()) if isinstance(ic, dict) else 1
-            mean_ic = ic.get(first_period, {}).get("mean_ic", 0) if isinstance(ic, dict) else 0
-            ic_std = ic.get(first_period, {}).get("ic_std", 0) if isinstance(ic, dict) else 0
-            ic_ir = ic.get(first_period, {}).get("ic_ir", 0) if isinstance(ic, dict) else 0
-        return f"""FactorAnalysisResult: {self.factor_name}
-  Periods: {periods_str}, Quantiles: {self.quantiles}
-  Mean IC: {mean_ic:.4f}
-  IC Std: {ic_std:.4f}
-  IC IR: {ic_ir:.4f}
+        if isinstance(self.periods, int):
+            # 單一 horizon: backward compatible format
+            ic = self.ic_summary
+            return f"""FactorAnalysisResult: {self.factor_name}
+  Periods: {self.periods}, Quantiles: {self.quantiles}
+  Mean IC: {ic.get("mean_ic", 0):.4f}
+  IC Std: {ic.get("ic_std", 0):.4f}
+  IC IR: {ic.get("ic_ir", 0):.4f}
   Turnover: {self.turnover_mean:.4f}
 """
+        else:
+            # Multi-horizon: show all periods
+            lines = [f"FactorAnalysisResult: {self.factor_name}"]
+            lines.append(f"  Periods: {self.periods}, Quantiles: {self.quantiles}")
+            for p in self.periods:
+                ic = self.ic_summary.get(p, {})
+                lines.append(f"  Period {p}: IC={ic.get('mean_ic', 0):.4f}, IR={ic.get('ic_ir', 0):.4f}")
+            lines.append(f"  Turnover: {self.turnover_mean:.4f}")
+            return "\n".join(lines) + "\n"
 
     def save(self, output_dir: str) -> None:
         """
