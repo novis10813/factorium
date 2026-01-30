@@ -83,7 +83,7 @@ class FactorAnalysisResult:
         """
         Save analysis results to directory with timestamp.
 
-        Creates structure:
+        Creates structure (single horizon):
         {output_dir}/
         └── YYYYMMDD_HHMMSS_{factor_name}/
             ├── config.json
@@ -97,6 +97,30 @@ class FactorAnalysisResult:
                 ├── ic_timeseries.png
                 ├── quantile_returns.png
                 └── cumulative_returns.png
+
+        Multi-horizon structure (periods=[1, 5, 20]):
+        {output_dir}/
+        └── YYYYMMDD_HHMMSS_{factor_name}/
+            ├── config.json
+            ├── ic_series.csv                   # columns: period_1, period_5, period_20
+            ├── ic_summary.csv                  # rows indexed by period
+            ├── turnover.csv
+            ├── quantile_returns_period_1.csv   # per-period files
+            ├── quantile_returns_period_5.csv
+            ├── quantile_returns_period_20.csv
+            ├── cumulative_returns_period_1.csv
+            ├── cumulative_returns_period_5.csv
+            ├── cumulative_returns_period_20.csv
+            └── plots/
+                ├── ic_distribution.png
+                ├── ic_timeseries.png
+                ├── ic_decay.png                # IC decay curve (multi-horizon only)
+                ├── quantile_returns_period_1.png
+                ├── quantile_returns_period_5.png
+                ├── quantile_returns_period_20.png
+                ├── cumulative_returns_period_1.png
+                ├── cumulative_returns_period_5.png
+                └── cumulative_returns_period_20.png
 
         Args:
             output_dir: Base directory for experiment outputs
@@ -173,21 +197,41 @@ class FactorAnalysisResult:
             logger.warning(f"Failed to generate IC distribution plot: {e}")
 
         # Quantile returns plot
-        try:
-            fig_qret = plotter.plot_quantile_returns(self.quantile_returns)
-            fig_qret.savefig(plots_path / "quantile_returns.png", dpi=150, bbox_inches="tight")
-            plt.close(fig_qret)
-        except Exception as e:
-            logger.warning(f"Failed to generate quantile returns plot: {e}")
+        if isinstance(self.periods, int):
+            try:
+                fig_qret = plotter.plot_quantile_returns(self.quantile_returns)
+                fig_qret.savefig(plots_path / "quantile_returns.png", dpi=150, bbox_inches="tight")
+                plt.close(fig_qret)
+            except Exception as e:
+                logger.warning(f"Failed to generate quantile returns plot: {e}")
+        else:
+            for p, df in self.quantile_returns.items():
+                try:
+                    fig_qret = plotter.plot_quantile_returns(df)
+                    fig_qret.savefig(plots_path / f"quantile_returns_period_{p}.png", dpi=150, bbox_inches="tight")
+                    plt.close(fig_qret)
+                except Exception as e:
+                    logger.warning(f"Failed to generate quantile returns plot for period {p}: {e}")
 
         # Cumulative returns plot (if available)
         if self.cumulative_returns is not None:
-            try:
-                fig_cumret = plotter.plot_cumulative_returns(self.cumulative_returns)
-                fig_cumret.savefig(plots_path / "cumulative_returns.png", dpi=150, bbox_inches="tight")
-                plt.close(fig_cumret)
-            except Exception as e:
-                logger.warning(f"Failed to generate cumulative returns plot: {e}")
+            if isinstance(self.periods, int):
+                try:
+                    fig_cumret = plotter.plot_cumulative_returns(self.cumulative_returns)
+                    fig_cumret.savefig(plots_path / "cumulative_returns.png", dpi=150, bbox_inches="tight")
+                    plt.close(fig_cumret)
+                except Exception as e:
+                    logger.warning(f"Failed to generate cumulative returns plot: {e}")
+            else:
+                for p, df in self.cumulative_returns.items():
+                    try:
+                        fig_cumret = plotter.plot_cumulative_returns(df)
+                        fig_cumret.savefig(
+                            plots_path / f"cumulative_returns_period_{p}.png", dpi=150, bbox_inches="tight"
+                        )
+                        plt.close(fig_cumret)
+                    except Exception as e:
+                        logger.warning(f"Failed to generate cumulative returns plot for period {p}: {e}")
 
         # IC decay plot (multi-horizon only)
         if isinstance(self.periods, list) and len(self.periods) > 1:
@@ -245,10 +289,17 @@ class FactorAnalyzer:
 
         Returns:
             FactorAnalysisResult with IC series, summary, and quantile returns
+
+        Raises:
+            ValueError: If periods is an empty list.
         """
         # Normalize periods to list for internal processing
         periods_list = [periods] if isinstance(periods, int) else periods
         is_single = isinstance(periods, int)
+
+        # Validate periods
+        if not periods_list:
+            raise ValueError("Periods list cannot be empty.")
 
         # Prepare data
         self.prepare_data(price_col=price_col, periods=periods_list)
