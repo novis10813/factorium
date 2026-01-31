@@ -27,17 +27,16 @@ class TestS3StorageBackendIntegration:
     """Integration tests for S3StorageBackend with real MinIO."""
 
     @pytest.fixture
-    def s3_backend(self, minio_test_bucket):
+    def s3_backend(self, minio_test_bucket, monkeypatch):
         """Create S3StorageBackend connected to MinIO."""
-        # Set environment variables for DuckDB S3 access
-        os.environ["AWS_ACCESS_KEY_ID"] = MINIO_ACCESS_KEY
-        os.environ["AWS_SECRET_ACCESS_KEY"] = MINIO_SECRET_KEY
-        os.environ["AWS_ENDPOINT_URL"] = f"http://{MINIO_ENDPOINT}"
-        os.environ["AWS_REGION"] = "us-east-1"
+        # Use monkeypatch to set environment variables (auto-restored after test)
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", MINIO_ACCESS_KEY)
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", MINIO_SECRET_KEY)
+        monkeypatch.setenv("AWS_ENDPOINT_URL", f"http://{MINIO_ENDPOINT}")
+        monkeypatch.setenv("AWS_REGION", "us-east-1")
 
         from factorium.storage.s3 import S3StorageBackend
 
-        # Use unique prefix for test isolation
         prefix = f"test-{uuid.uuid4().hex[:8]}"
         backend = S3StorageBackend(bucket=minio_test_bucket, prefix=prefix)
 
