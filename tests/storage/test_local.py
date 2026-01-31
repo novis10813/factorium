@@ -108,3 +108,22 @@ class TestLocalStorageBackend:
 
         # Should contain the base path
         assert str(base_path) in result
+
+    def test_resolve_path_rejects_absolute_paths(self, backend):
+        """_resolve_path() should reject absolute paths."""
+        with pytest.raises(ValueError, match="Path must be relative"):
+            backend._resolve_path("/etc/passwd")
+
+    def test_resolve_path_rejects_directory_traversal(self, backend):
+        """_resolve_path() should reject directory traversal attempts."""
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            backend._resolve_path("../outside.txt")
+
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            backend._resolve_path("subdir/../../../root.txt")
+
+    def test_delete_nonexistent_file_does_not_raise(self, backend):
+        """delete() should not raise when file doesn't exist."""
+        # This should not raise an exception
+        backend.delete("nonexistent.parquet")
+        assert not backend.exists("nonexistent.parquet")
