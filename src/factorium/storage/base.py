@@ -15,6 +15,11 @@ class StorageBackend(ABC):
     """
 
     @abstractmethod
+    def full_path(self, path: str) -> str:
+        """Get absolute path string for DuckDB queries."""
+        ...
+
+    @abstractmethod
     def read_parquet(self, path: str) -> pl.DataFrame:
         """Read a single Parquet file."""
         ...
