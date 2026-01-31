@@ -133,30 +133,35 @@ from .parquet import get_market_string, build_hive_path
 
 class BinanceDataLoader:
     """
-    Data loader for Binance market data with automatic download.
+        Data loader for Binance market data with automatic download.
 
-    Uses DuckDB to query Parquet files stored in Hive partition format.
+        Uses DuckDB to query Parquet files stored in Hive partition format.
 
-    Args:
-        backend: Storage backend type - "local" or "s3"
-        path: For local: base directory. For S3: "bucket/prefix"
-        base_path: DEPRECATED. Use backend='local' and path instead.
-        max_concurrent_downloads: Maximum number of concurrent downloads
-        retry_attempts: Number of retry attempts for failed downloads
-        retry_delay: Delay between retries in seconds
+        Args:
+            backend: Storage backend type - "local" or "s3"
+            path: For local: base directory. For S3: "bucket/prefix"
+            base_path: DEPRECATED. Use backend='local' and path instead.
+            max_concurrent_downloads: Maximum number of concurrent downloads
+            retry_attempts: Number of retry attempts for failed downloads
+            retry_delay: Delay between retries in seconds
 
-    Example:
-        >>> loader = BinanceDataLoader()
-        >>> agg = loader.load_aggbar(
-        ...     symbols=["BTCUSDT"],
-        ...     data_type="aggTrades",
-        ...     market_type="futures",
-        ...     futures_type="um",
-        ...     start_date="2024-01-01",
-        ...     days=7,
-        ...     bar_type="time",
-        ...     interval=60_000,
-        ... )
+        Example:
+            >>> loader = BinanceDataLoader()
+            >>> agg = loader.load_aggbar(
+            ...     symbols=["BTCUSDT"],
+            ...     data_type="aggTrades",
+            ...     market_type="futures",
+            ...     futures_type="um",
+            ...     start_date="2024-01-01",
+            ...     days=7,
+            ...     bar_type="time",
+            ...     interval=60_000,
+             ... )
+
+
+    Note:
+        When using backend='s3', data must already exist in S3.
+        Automatic download to S3 is not yet supported.
     """
 
     def __init__(
@@ -189,7 +194,8 @@ class BinanceDataLoader:
             path = base_path
 
         self.storage = get_storage_backend(backend, path)
-        self.base_path = Path(path)  # Keep for backward compat with _check_all_files_exist
+        self.backend = backend
+        self.base_path = Path(path) if backend == "local" else None
         self.downloader = BinanceDataDownloader(
             base_path=path,
             max_concurrent_downloads=max_concurrent_downloads,
@@ -217,13 +223,16 @@ class BinanceDataLoader:
 
         current = start_dt
         while current < end_dt:
-            hive_path = build_hive_path(
-                self.base_path, market, data_type, symbol, current.year, current.month, current.day
-            )
-            parquet_file = hive_path / "data.parquet"
-            relative_path = parquet_file.relative_to(self.base_path)
-            if not self.storage.exists(str(relative_path)):
-                return False
+            base_str = self.storage.full_path("")
+            hive_path_str = f"{base_str}/market={market}/data_type={data_type}/symbol={symbol}/year={current.year}/month={current.month:02d}/day={current.day:02d}"
+            parquet_file_str = f"{hive_path_str}/data.parquet"
+            if self.backend == "local":
+                relative_path = parquet_file_str[len(base_str) + 1 :]
+                if not self.storage.exists(relative_path):
+                    return False
+            else:
+                if not self.storage.exists(parquet_file_str):
+                    return False
             current += timedelta(days=1)
         return True
 
@@ -357,7 +366,7 @@ class BinanceDataLoader:
             end_ts = int(end_dt.timestamp() * 1000)
 
             parquet_pattern = adapter.build_parquet_glob(
-                base_path=Path(self.storage.full_path("")),
+                base_path=self.storage.full_path(""),
                 symbols=symbols,
                 data_type=data_type,
                 market_type=market_type,
@@ -438,7 +447,7 @@ class BinanceDataLoader:
                 day_end_ts = int((current + timedelta(days=1)).timestamp() * 1000)
 
                 parquet_pattern = adapter.build_parquet_glob(
-                    base_path=Path(self.storage.full_path("")),
+                    base_path=self.storage.full_path(""),
                     symbols=symbols,
                     data_type=data_type,
                     market_type=market_type,
@@ -607,12 +616,16 @@ class BinanceDataLoader:
             symbol_missing: list[datetime] = []
             current = start_dt
             while current < end_dt:
-                hive_path = build_hive_path(
-                    self.base_path, market, data_type, symbol, current.year, current.month, current.day
-                )
-                parquet_file = hive_path / "data.parquet"
-                relative_path = parquet_file.relative_to(self.base_path)
-                if not self.storage.exists(str(relative_path)):
+                base_str = self.storage.full_path("")
+                hive_path_str = f"{base_str}/market={market}/data_type={data_type}/symbol={symbol}/year={current.year}/month={current.month:02d}/day={current.day:02d}"
+                parquet_file_str = f"{hive_path_str}/data.parquet"
+                exists = False
+                if self.backend == "local":
+                    relative_path = parquet_file_str[len(base_str) + 1 :]
+                    exists = self.storage.exists(relative_path)
+                else:
+                    exists = self.storage.exists(parquet_file_str)
+                if not exists:
                     symbol_missing.append(current)
                 current += timedelta(days=1)
 
@@ -752,7 +765,7 @@ class BinanceDataLoader:
 
         # Build parquet glob pattern
         parquet_pattern = adapter.build_parquet_glob(
-            base_path=Path(self.storage.full_path("")),
+            base_path=self.storage.full_path(""),
             symbols=symbols,
             data_type=data_type,
             market_type=market_type,
