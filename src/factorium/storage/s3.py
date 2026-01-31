@@ -18,16 +18,19 @@ except ImportError:
 
 
 class S3StorageBackend(StorageBackend):
-    """Storage backend for Amazon S3."""
+    """Storage backend for Amazon S3.
+
+    Supports custom S3-compatible endpoints (MinIO, LocalStack) via AWS_ENDPOINT_URL.
+    """
 
     def __init__(self, bucket: str, prefix: str = ""):
         self.bucket = bucket
         self.prefix = prefix.strip("/")
 
         # Support custom endpoint for MinIO/LocalStack
-        endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
-        if endpoint_url:
-            self._s3_client = boto3.client("s3", endpoint_url=endpoint_url)
+        self._endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
+        if self._endpoint_url:
+            self._s3_client = boto3.client("s3", endpoint_url=self._endpoint_url)
         else:
             self._s3_client = boto3.client("s3")
 
@@ -42,18 +45,41 @@ class S3StorageBackend(StorageBackend):
         key = self._build_key(path)
         return f"s3://{self.bucket}/{key}"
 
+    def _configure_duckdb_s3(self, con) -> None:
+        """Configure DuckDB connection for S3 access.
+
+        DuckDB requires explicit S3 configuration, it doesn't read AWS_ENDPOINT_URL.
+        """
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+        region = os.environ.get("AWS_REGION", "us-east-1")
+
+        con.execute(f"SET s3_access_key_id='{access_key}'")
+        con.execute(f"SET s3_secret_access_key='{secret_key}'")
+        con.execute(f"SET s3_region='{region}'")
+
+        if self._endpoint_url:
+            # For MinIO/LocalStack: configure custom endpoint
+            # Remove http:// or https:// prefix for DuckDB
+            endpoint = self._endpoint_url.replace("http://", "").replace("https://", "")
+            con.execute(f"SET s3_endpoint='{endpoint}'")
+            con.execute("SET s3_use_ssl=false")
+            con.execute("SET s3_url_style='path'")
+
     def read_parquet(self, path: str) -> pl.DataFrame:
         """Read a Parquet file from S3 using DuckDB.
 
         Note:
             Requires AWS credentials to be configured via environment variables
             (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) or ~/.aws/credentials.
+            For MinIO/LocalStack, set AWS_ENDPOINT_URL.
         """
         import duckdb
 
         uri = self.full_path(path)
         con = duckdb.connect(":memory:")
         try:
+            self._configure_duckdb_s3(con)
             result = con.execute(f"SELECT * FROM read_parquet('{uri}')").pl()
         finally:
             con.close()

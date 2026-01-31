@@ -86,8 +86,9 @@ class TestS3StorageBackend:
             result = backend.read_parquet("test.parquet")
 
         mock_duckdb.connect.assert_called_once_with(":memory:")
-        mock_con.execute.assert_called_once()
-        assert "s3://test-bucket/data/test.parquet" in mock_con.execute.call_args[0][0]
+        # Check that at least one execute call contains the S3 URI
+        execute_calls = [str(call) for call in mock_con.execute.call_args_list]
+        assert any("s3://test-bucket/data/test.parquet" in call for call in execute_calls)
         mock_con.close.assert_called_once()
 
     def test_glob_returns_matching_files(self, backend, mock_boto3):
