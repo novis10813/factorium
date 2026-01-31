@@ -3,7 +3,7 @@ version: '3.8'
 
 services:
   minio:
-    image: bitnami/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: factorium-minio-test
     ports:
       - "9000:9000"
@@ -11,8 +11,9 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 5
