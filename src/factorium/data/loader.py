@@ -14,6 +14,8 @@ import duckdb
 import pandas as pd
 import polars as pl
 
+from ..storage import StorageBackend, get_storage_backend
+
 
 def _run_async(coro):
     """
@@ -136,7 +138,9 @@ class BinanceDataLoader:
     Uses DuckDB to query Parquet files stored in Hive partition format.
 
     Args:
-        base_path: Base directory for data storage
+        backend: Storage backend type - "local" or "s3"
+        path: For local: base directory. For S3: "bucket/prefix"
+        base_path: DEPRECATED. Use backend='local' and path instead.
         max_concurrent_downloads: Maximum number of concurrent downloads
         retry_attempts: Number of retry attempts for failed downloads
         retry_delay: Delay between retries in seconds
@@ -157,14 +161,37 @@ class BinanceDataLoader:
 
     def __init__(
         self,
-        base_path: str = "./Data",
+        backend: str = "local",
+        path: str = "./Data",
+        *,
+        base_path: str | None = None,  # Deprecated
         max_concurrent_downloads: int = 5,
         retry_attempts: int = 3,
         retry_delay: int = 1,
     ):
-        self.base_path = Path(base_path)
+        """...
+
+        Args:
+            backend: Storage backend type - "local" or "s3"
+            path: For local: base directory. For S3: "bucket/prefix"
+            base_path: DEPRECATED. Use backend='local' and path instead.
+            ...
+        """
+        if base_path is not None:
+            import warnings
+
+            warnings.warn(
+                "base_path is deprecated, use backend='local' and path instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            backend = "local"
+            path = base_path
+
+        self.storage = get_storage_backend(backend, path)
+        self.base_path = Path(path)  # Keep for backward compat with _check_all_files_exist
         self.downloader = BinanceDataDownloader(
-            base_path=base_path,
+            base_path=path,
             max_concurrent_downloads=max_concurrent_downloads,
             retry_attempts=retry_attempts,
             retry_delay=retry_delay,
@@ -194,7 +221,8 @@ class BinanceDataLoader:
                 self.base_path, market, data_type, symbol, current.year, current.month, current.day
             )
             parquet_file = hive_path / "data.parquet"
-            if not parquet_file.exists():
+            relative_path = parquet_file.relative_to(self.base_path)
+            if not self.storage.exists(str(relative_path)):
                 return False
             current += timedelta(days=1)
         return True
@@ -315,7 +343,7 @@ class BinanceDataLoader:
         # Initialize components (for trades/aggTrades aggregation)
         adapter = BinanceAdapter()
         aggregator = BarAggregator()
-        cache = BarCache() if (use_cache and bar_type == "time") else None
+        cache = BarCache(storage=self.storage) if (use_cache and bar_type == "time") else None
         market_str = self._get_market_string(market_type, futures_type)
 
         # Collect aggregated data
@@ -329,7 +357,7 @@ class BinanceDataLoader:
             end_ts = int(end_dt.timestamp() * 1000)
 
             parquet_pattern = adapter.build_parquet_glob(
-                base_path=self.base_path,
+                base_path=Path(self.storage.full_path("")),
                 symbols=symbols,
                 data_type=data_type,
                 market_type=market_type,
@@ -410,7 +438,7 @@ class BinanceDataLoader:
                 day_end_ts = int((current + timedelta(days=1)).timestamp() * 1000)
 
                 parquet_pattern = adapter.build_parquet_glob(
-                    base_path=self.base_path,
+                    base_path=Path(self.storage.full_path("")),
                     symbols=symbols,
                     data_type=data_type,
                     market_type=market_type,
@@ -583,7 +611,8 @@ class BinanceDataLoader:
                     self.base_path, market, data_type, symbol, current.year, current.month, current.day
                 )
                 parquet_file = hive_path / "data.parquet"
-                if not parquet_file.exists():
+                relative_path = parquet_file.relative_to(self.base_path)
+                if not self.storage.exists(str(relative_path)):
                     symbol_missing.append(current)
                 current += timedelta(days=1)
 
@@ -723,7 +752,7 @@ class BinanceDataLoader:
 
         # Build parquet glob pattern
         parquet_pattern = adapter.build_parquet_glob(
-            base_path=self.base_path,
+            base_path=Path(self.storage.full_path("")),
             symbols=symbols,
             data_type=data_type,
             market_type=market_type,
