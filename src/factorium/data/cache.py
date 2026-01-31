@@ -37,8 +37,6 @@ class BarCache:
             cache_prefix: Prefix path for cache files within storage.
             cache_dir: DEPRECATED. Use storage parameter instead.
         """
-        from ..storage import LocalStorageBackend
-
         if cache_dir is not None:
             # Backward compatibility
             import warnings
@@ -51,7 +49,6 @@ class BarCache:
             self.storage = LocalStorageBackend(str(cache_dir))
             self.cache_prefix = ""
             self.cache_dir = Path(cache_dir)  # for backward compatibility
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
         elif storage is None:
             self.storage = LocalStorageBackend("./Data")
             self.cache_prefix = cache_prefix
