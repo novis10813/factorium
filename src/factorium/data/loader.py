@@ -14,7 +14,7 @@ import duckdb
 import pandas as pd
 import polars as pl
 
-from ..storage import StorageBackend, get_storage_backend
+from ..storage import get_storage_backend
 
 
 def _run_async(coro):
@@ -209,6 +209,23 @@ class BinanceDataLoader:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
 
+    def _build_parquet_relative_path(self, market: str, data_type: str, symbol: str, date: datetime) -> str:
+        """Build the relative path for a Parquet file.
+
+        Args:
+            market: Market string (e.g., "futures_um", "spot")
+            data_type: Data type (e.g., "aggTrades", "klines")
+            symbol: Trading symbol
+            date: Date for the partition
+
+        Returns:
+            Relative path to the Parquet file (e.g., "market=.../data.parquet")
+        """
+        return (
+            f"market={market}/data_type={data_type}/symbol={symbol}/"
+            f"year={date.year}/month={date.month:02d}/day={date.day:02d}/data.parquet"
+        )
+
     def _check_all_files_exist(
         self,
         symbol: str,
@@ -223,10 +240,7 @@ class BinanceDataLoader:
 
         current = start_dt
         while current < end_dt:
-            base_str = self.storage.full_path("").rstrip("/")
-            hive_path_str = f"{base_str}/market={market}/data_type={data_type}/symbol={symbol}/year={current.year}/month={current.month:02d}/day={current.day:02d}"
-            parquet_file_str = f"{hive_path_str}/data.parquet"
-            relative_path = parquet_file_str[len(base_str) + 1 :].lstrip("/")
+            relative_path = self._build_parquet_relative_path(market, data_type, symbol, current)
             if not self.storage.exists(relative_path):
                 return False
             current += timedelta(days=1)
@@ -347,7 +361,13 @@ class BinanceDataLoader:
 
         # Initialize components (for trades/aggTrades aggregation)
         adapter = BinanceAdapter()
-        aggregator = BarAggregator()
+
+        # Create DuckDB configurator for S3 backend
+        duckdb_configurator = None
+        if hasattr(self.storage, "configure_duckdb_s3"):
+            duckdb_configurator = self.storage.configure_duckdb_s3
+
+        aggregator = BarAggregator(duckdb_configurator=duckdb_configurator)
         cache = BarCache(storage=self.storage) if (use_cache and bar_type == "time") else None
         market_str = self._get_market_string(market_type, futures_type)
 
@@ -612,10 +632,7 @@ class BinanceDataLoader:
             symbol_missing: list[datetime] = []
             current = start_dt
             while current < end_dt:
-                base_str = self.storage.full_path("").rstrip("/")
-                hive_path_str = f"{base_str}/market={market}/data_type={data_type}/symbol={symbol}/year={current.year}/month={current.month:02d}/day={current.day:02d}"
-                parquet_file_str = f"{hive_path_str}/data.parquet"
-                relative_path = parquet_file_str[len(base_str) + 1 :].lstrip("/")
+                relative_path = self._build_parquet_relative_path(market, data_type, symbol, current)
                 if not self.storage.exists(relative_path):
                     symbol_missing.append(current)
                 current += timedelta(days=1)
@@ -766,6 +783,10 @@ class BinanceDataLoader:
         # Detect timestamp unit from data
         # Use a single DuckDB connection for all queries
         con = duckdb.connect(":memory:")
+
+        # Configure S3 settings if using S3 backend
+        if hasattr(self.storage, "configure_duckdb_s3"):
+            self.storage.configure_duckdb_s3(con)
 
         sample_query = f"""
             SELECT open_time 

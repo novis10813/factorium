@@ -45,10 +45,22 @@ class S3StorageBackend(StorageBackend):
         key = self._build_key(path)
         return f"s3://{self.bucket}/{key}"
 
-    def _configure_duckdb_s3(self, con) -> None:
+    def configure_duckdb_s3(self, con) -> None:
         """Configure DuckDB connection for S3 access.
 
         DuckDB requires explicit S3 configuration, it doesn't read AWS_ENDPOINT_URL.
+
+        This method should be called on any DuckDB connection that will access S3 URIs
+        before executing queries, especially when using custom endpoints like MinIO.
+
+        Args:
+            con: A DuckDB connection object
+
+        Example:
+            >>> storage = S3StorageBackend("my-bucket")
+            >>> con = duckdb.connect(":memory:")
+            >>> storage.configure_duckdb_s3(con)
+            >>> df = con.execute("SELECT * FROM read_parquet('s3://...')").pl()
         """
         access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
         secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
@@ -79,7 +91,7 @@ class S3StorageBackend(StorageBackend):
         uri = self.full_path(path)
         con = duckdb.connect(":memory:")
         try:
-            self._configure_duckdb_s3(con)
+            self.configure_duckdb_s3(con)
             result = con.execute(f"SELECT * FROM read_parquet('{uri}')").pl()
         finally:
             con.close()
