@@ -72,3 +72,41 @@ class TestS3StorageBackend:
         call_kwargs = mock_boto3.client.return_value.put_object.call_args[1]
         assert call_kwargs["Bucket"] == "test-bucket"
         assert call_kwargs["Key"] == "data/test.parquet"
+
+    def test_read_parquet_uses_duckdb(self, backend, mock_boto3):
+        """read_parquet() should use DuckDB with correct S3 URI."""
+        import sys
+
+        mock_duckdb = MagicMock()
+        mock_con = MagicMock()
+        mock_duckdb.connect.return_value = mock_con
+        mock_con.execute.return_value.pl.return_value = pl.DataFrame({"a": [1]})
+
+        with patch.dict("sys.modules", {"duckdb": mock_duckdb}):
+            result = backend.read_parquet("test.parquet")
+
+        mock_duckdb.connect.assert_called_once_with(":memory:")
+        mock_con.execute.assert_called_once()
+        assert "s3://test-bucket/data/test.parquet" in mock_con.execute.call_args[0][0]
+        mock_con.close.assert_called_once()
+
+    def test_glob_returns_matching_files(self, backend, mock_boto3):
+        """glob() should return files matching pattern."""
+        # Mock paginator response
+        mock_paginator = MagicMock()
+        mock_boto3.client.return_value.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {
+                "Contents": [
+                    {"Key": "data/cache/file1.parquet"},
+                    {"Key": "data/cache/file2.parquet"},
+                    {"Key": "data/other/file3.parquet"},
+                ]
+            }
+        ]
+
+        matches = backend.glob("cache/*.parquet")
+
+        assert len(matches) == 2
+        assert "cache/file1.parquet" in matches
+        assert "cache/file2.parquet" in matches

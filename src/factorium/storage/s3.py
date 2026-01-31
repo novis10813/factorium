@@ -36,13 +36,20 @@ class S3StorageBackend(StorageBackend):
         return f"s3://{self.bucket}/{key}"
 
     def read_parquet(self, path: str) -> pl.DataFrame:
-        """Read a Parquet file from S3 using DuckDB."""
+        """Read a Parquet file from S3 using DuckDB.
+
+        Note:
+            Requires AWS credentials to be configured via environment variables
+            (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) or ~/.aws/credentials.
+        """
         import duckdb
 
         uri = self.full_path(path)
         con = duckdb.connect(":memory:")
-        result = con.execute(f"SELECT * FROM read_parquet('{uri}')").pl()
-        con.close()
+        try:
+            result = con.execute(f"SELECT * FROM read_parquet('{uri}')").pl()
+        finally:
+            con.close()
         return result
 
     def write_parquet(self, df: pl.DataFrame, path: str) -> None:
