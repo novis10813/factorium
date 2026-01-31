@@ -75,5 +75,36 @@ class TestLocalStorageBackend:
     def test_full_path_returns_absolute_path(self, backend, temp_dir):
         """full_path() should return absolute path for DuckDB."""
         full = backend.full_path("some/file.parquet")
+        assert Path(full).is_absolute(), f"Expected absolute path, got: {full}"
         assert str(temp_dir) in full
         assert "some/file.parquet" in full
+
+    def test_full_path_returns_absolute_path_with_relative_base(self):
+        """full_path should return absolute path even when base_path is relative."""
+        # Create backend with relative path
+        backend = LocalStorageBackend("./test_data")
+
+        # Get full path
+        result = backend.full_path("some/file.parquet")
+
+        # Should be absolute
+        assert Path(result).is_absolute(), f"Expected absolute path, got: {result}"
+
+        # Should contain the resolved base path
+        expected_base = Path("./test_data").resolve()
+        assert str(expected_base) in result
+
+    def test_full_path_returns_absolute_path_with_absolute_base(self):
+        """full_path should return absolute path when base_path is absolute."""
+        # Create backend with absolute path
+        base_path = Path("/tmp/test_data").resolve()
+        backend = LocalStorageBackend(str(base_path))
+
+        # Get full path
+        result = backend.full_path("some/file.parquet")
+
+        # Should be absolute
+        assert Path(result).is_absolute(), f"Expected absolute path, got: {result}"
+
+        # Should contain the base path
+        assert str(base_path) in result

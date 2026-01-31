@@ -21,7 +21,7 @@ class LocalStorageBackend(StorageBackend):
 
     def full_path(self, path: str) -> str:
         """Get absolute path string for DuckDB queries."""
-        return str(self._resolve_path(path))
+        return str(self._resolve_path(path).resolve())
 
     def read_parquet(self, path: str) -> pl.DataFrame:
         return pl.read_parquet(self._resolve_path(path))
