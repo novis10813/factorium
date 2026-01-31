@@ -29,8 +29,10 @@ class LocalStorageBackend(StorageBackend):
         resolved = (self.base_path / path).resolve()
         base_resolved = self.base_path.resolve()
 
-        # Ensure the resolved path starts with the base path
-        if not str(resolved).startswith(str(base_resolved) + "/") and resolved != base_resolved:
+        # Ensure the resolved path is within the base path (cross-platform)
+        try:
+            resolved.relative_to(base_resolved)
+        except ValueError:
             raise ValueError(f"Path traversal detected: {path}")
 
         return resolved

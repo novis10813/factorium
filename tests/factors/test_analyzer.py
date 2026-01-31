@@ -421,7 +421,6 @@ def test_save_multi_horizon_creates_per_period_files(sample_data):
         # 應有 config.json 包含 periods
         config_path = exp_dir / "config.json"
         assert config_path.exists()
-        import json
 
 
 def test_plot_ic_decay(sample_data):
