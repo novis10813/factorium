@@ -223,16 +223,12 @@ class BinanceDataLoader:
 
         current = start_dt
         while current < end_dt:
-            base_str = self.storage.full_path("")
+            base_str = self.storage.full_path("").rstrip("/")
             hive_path_str = f"{base_str}/market={market}/data_type={data_type}/symbol={symbol}/year={current.year}/month={current.month:02d}/day={current.day:02d}"
             parquet_file_str = f"{hive_path_str}/data.parquet"
-            if self.backend == "local":
-                relative_path = parquet_file_str[len(base_str) + 1 :]
-                if not self.storage.exists(relative_path):
-                    return False
-            else:
-                if not self.storage.exists(parquet_file_str):
-                    return False
+            relative_path = parquet_file_str[len(base_str) + 1 :].lstrip("/")
+            if not self.storage.exists(relative_path):
+                return False
             current += timedelta(days=1)
         return True
 
@@ -616,16 +612,11 @@ class BinanceDataLoader:
             symbol_missing: list[datetime] = []
             current = start_dt
             while current < end_dt:
-                base_str = self.storage.full_path("")
+                base_str = self.storage.full_path("").rstrip("/")
                 hive_path_str = f"{base_str}/market={market}/data_type={data_type}/symbol={symbol}/year={current.year}/month={current.month:02d}/day={current.day:02d}"
                 parquet_file_str = f"{hive_path_str}/data.parquet"
-                exists = False
-                if self.backend == "local":
-                    relative_path = parquet_file_str[len(base_str) + 1 :]
-                    exists = self.storage.exists(relative_path)
-                else:
-                    exists = self.storage.exists(parquet_file_str)
-                if not exists:
+                relative_path = parquet_file_str[len(base_str) + 1 :].lstrip("/")
+                if not self.storage.exists(relative_path):
                     symbol_missing.append(current)
                 current += timedelta(days=1)
 

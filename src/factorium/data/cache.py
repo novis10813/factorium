@@ -36,6 +36,7 @@ class BarCache:
             storage: StorageBackend instance. If None, creates LocalStorageBackend.
             cache_prefix: Prefix path for cache files within storage.
             cache_dir: DEPRECATED. Use storage parameter instead.
+                When using storage (or default), cache_dir attribute is set to None.
         """
         if cache_dir is not None:
             # Backward compatibility
@@ -52,9 +53,11 @@ class BarCache:
         elif storage is None:
             self.storage = LocalStorageBackend("./Data")
             self.cache_prefix = cache_prefix
+            self.cache_dir = None  # not used when storage is the source of truth
         else:
             self.storage = storage
             self.cache_prefix = cache_prefix
+            self.cache_dir = None  # not used when storage is the source of truth
 
         if self.cache_prefix:
             self.storage.makedirs(self.cache_prefix)
