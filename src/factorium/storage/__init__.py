@@ -4,6 +4,12 @@
 from .base import StorageBackend
 from .local import LocalStorageBackend
 
+# Optional S3 backend
+try:
+    from .s3 import S3StorageBackend
+except ImportError:
+    S3StorageBackend = None
+
 
 def get_storage_backend(backend: str = "local", path: str = "./Data") -> StorageBackend:
     """Factory function to create storage backend instances.
@@ -27,7 +33,6 @@ def get_storage_backend(backend: str = "local", path: str = "./Data") -> Storage
     if backend == "local":
         return LocalStorageBackend(path)
     elif backend == "s3":
-        # S3 backend will be implemented in Task 4
         try:
             from .s3 import S3StorageBackend
         except ImportError:
@@ -41,4 +46,4 @@ def get_storage_backend(backend: str = "local", path: str = "./Data") -> Storage
         raise ValueError(f"Unknown backend: {backend}. Supported: 'local', 's3'")
 
 
-__all__ = ["StorageBackend", "LocalStorageBackend", "get_storage_backend"]
+__all__ = ["StorageBackend", "LocalStorageBackend", "S3StorageBackend", "get_storage_backend"]

@@ -3,6 +3,7 @@
 
 from typing import List
 import io
+import os
 
 import polars as pl
 
@@ -22,7 +23,13 @@ class S3StorageBackend(StorageBackend):
     def __init__(self, bucket: str, prefix: str = ""):
         self.bucket = bucket
         self.prefix = prefix.strip("/")
-        self._s3_client = boto3.client("s3")
+
+        # Support custom endpoint for MinIO/LocalStack
+        endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
+        if endpoint_url:
+            self._s3_client = boto3.client("s3", endpoint_url=endpoint_url)
+        else:
+            self._s3_client = boto3.client("s3")
 
     def _build_key(self, path: str) -> str:
         """Build full S3 key from relative path."""
