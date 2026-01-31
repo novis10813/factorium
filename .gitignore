@@ -13,6 +13,7 @@ site/
 # Data source
 Data/
 test_data/
+docs/plans/
 
 # Coverage reports
 .coverage
