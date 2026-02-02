@@ -179,7 +179,7 @@ def safe_divide(
     """
     # Handle scalar
     if isinstance(b, (int, float, np.floating, np.integer)):
-        if np.isnan(b) or abs(b) <= EPSILON:
+        if np.isnan(float(b)) or abs(float(b)) <= EPSILON:
             return default
         return a / b
 

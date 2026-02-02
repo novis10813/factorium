@@ -5,7 +5,7 @@ This module provides a parser for functional-style factor expressions,
 enabling string-based factor construction similar to alpha101.
 """
 
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Union, cast
 
 if TYPE_CHECKING:
     from .core import Factor
@@ -172,7 +172,7 @@ class FactorExpressionParser:
                 else:
                     eval_args = [self._evaluate(args_val, context)]
 
-                return op_func(*eval_args)
+                return cast("Factor | float | int", op_func(*eval_args))
 
             # Check if it's a variable
             if "variable" in node_dict:
@@ -221,7 +221,7 @@ class FactorExpressionParser:
                     if isinstance(args_list, list)
                     else [self._evaluate(args_list, context)]
                 )
-                return op_func(*eval_args)
+                return cast("Factor | float | int", op_func(*eval_args))
 
             if "variable" in node:
                 var_name = node["variable"]

@@ -44,7 +44,8 @@ def test_factor_eval_returns_analysis_result(sample_factor_and_prices):
 
     assert isinstance(result, FactorAnalysisResult)
     assert result.factor_name == factor.name
-    assert result.periods == 1
+    # periods is now always list[int]
+    assert result.periods == [1]
     assert result.quantiles == 5
     assert hasattr(result, "turnover_series")
     assert hasattr(result, "turnover_mean")

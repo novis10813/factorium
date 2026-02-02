@@ -4,6 +4,8 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
+
 import polars as pl
 
 from ..storage import LocalStorageBackend, StorageBackend
@@ -22,6 +24,8 @@ class BarCache:
     Cache key is a hash of (exchange, symbols, interval_ms, data_type, market_type).
     Each day is stored as a separate Parquet file for efficient partial updates.
     """
+
+    storage: StorageBackend
 
     def __init__(
         self,
@@ -114,7 +118,7 @@ class BarCache:
         cache_path = self._get_cache_path(exchange, symbols, interval_ms, data_type, market_type, date)
 
         if self.storage.exists(cache_path):
-            return self.storage.read_parquet(cache_path)
+            return cast(pl.DataFrame, self.storage.read_parquet(cache_path))
         return None
 
     def get_range(

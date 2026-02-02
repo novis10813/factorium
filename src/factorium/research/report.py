@@ -114,13 +114,20 @@ class FactorReport:
     def __repr__(self) -> str:
         """String representation of report."""
         summary = self.summary()
-        ic = summary["ic_summary"]
+        ic_summary = summary["ic_summary"]
         metrics = summary["backtest_metrics"]
 
         def fmt_float(val: Any, fmt: str) -> str:
             if isinstance(val, (int, float)):
                 return f"{val:{fmt}}"
             return "N/A"
+
+        # ic_summary is now dict[int, dict[str, float]], get first period's stats
+        if ic_summary:
+            first_period = next(iter(ic_summary.keys()))
+            ic = ic_summary.get(first_period, {})
+        else:
+            ic = {}
 
         return f"""FactorReport: {summary["factor_name"]}
 IC Summary:

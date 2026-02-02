@@ -5,7 +5,7 @@ This module provides functional-style wrappers for all Factor operations,
 enabling expression-based factor construction similar to alpha101.
 """
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union, cast
 
 import numpy as np
 
@@ -253,7 +253,7 @@ def pow(factor: "Factor", exponent: Union["Factor", float]) -> "Factor":
     return factor.pow(exponent)
 
 
-def where(factor: "Factor", cond: "Factor", other: Union["Factor", float] = None) -> "Factor":
+def where(factor: "Factor", cond: "Factor", other: Union["Factor", float, None] = None) -> "Factor":
     """Functional version of factor.where(cond, other)"""
     if other is None:
         other = np.nan
@@ -281,20 +281,62 @@ def reverse(factor: "Factor") -> "Factor":
 
 
 def add(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
-    """Functional version of factor1 + factor2"""
-    return factor1 + factor2
+    """Functional version of factor1 + factor2.
+
+    At least one argument must be a Factor. The result is always a Factor.
+    """
+    from .core import Factor as FactorClass
+
+    if isinstance(factor1, FactorClass):
+        return cast("Factor", factor1 + factor2)
+    elif isinstance(factor2, FactorClass):
+        return cast("Factor", factor2 + factor1)
+    else:
+        raise TypeError("At least one argument must be a Factor")
 
 
 def sub(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
-    """Functional version of factor1 - factor2"""
-    return factor1 - factor2
+    """Functional version of factor1 - factor2.
+
+    At least one argument must be a Factor. The result is always a Factor.
+    """
+    from .core import Factor as FactorClass
+
+    if isinstance(factor1, FactorClass):
+        return cast("Factor", factor1 - factor2)
+    elif isinstance(factor2, FactorClass):
+        # float - Factor = -(Factor - float)
+        return cast("Factor", (factor2 - factor1).reverse())
+    else:
+        raise TypeError("At least one argument must be a Factor")
 
 
 def mul(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
-    """Functional version of factor1 * factor2"""
-    return factor1 * factor2
+    """Functional version of factor1 * factor2.
+
+    At least one argument must be a Factor. The result is always a Factor.
+    """
+    from .core import Factor as FactorClass
+
+    if isinstance(factor1, FactorClass):
+        return cast("Factor", factor1 * factor2)
+    elif isinstance(factor2, FactorClass):
+        return cast("Factor", factor2 * factor1)
+    else:
+        raise TypeError("At least one argument must be a Factor")
 
 
 def div(factor1: Union["Factor", float], factor2: Union["Factor", float]) -> "Factor":
-    """Functional version of factor1 / factor2"""
-    return factor1 / factor2
+    """Functional version of factor1 / factor2.
+
+    At least one argument must be a Factor. The result is always a Factor.
+    """
+    from .core import Factor as FactorClass
+
+    if isinstance(factor1, FactorClass):
+        return cast("Factor", factor1 / factor2)
+    elif isinstance(factor2, FactorClass):
+        # float / Factor = (1/Factor) * float = Factor.pow(-1) * float
+        return cast("Factor", factor2.pow(-1) * factor1)
+    else:
+        raise TypeError("At least one argument must be a Factor")

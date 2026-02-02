@@ -1,10 +1,7 @@
-
 try:
     from typing import Self
 except ImportError:
     from typing import Self
-
-import numbers
 
 import polars as pl
 
@@ -52,7 +49,7 @@ class CrossSectionalOpsMixin:
         Cross-sectional winsorization. Strict: Returns NaN if any input is NaN.
         Limits can be a single float (applied to both sides) or [lower, upper].
         """
-        if isinstance(limits, numbers.Real):
+        if isinstance(limits, (int, float)):
             lower_lim = upper_lim = limits
         else:
             lower_lim, upper_lim = limits

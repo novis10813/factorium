@@ -7,7 +7,7 @@ across multiple symbols in long format.
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -80,8 +80,8 @@ class AggBar:
 
         return AggBarMetadata(
             symbols=sorted(self._data["symbol"].unique().to_list()),
-            min_time=self._data["start_time"].min(),
-            max_time=self._data["end_time"].max(),
+            min_time=cast(int, self._data["start_time"].min()),
+            max_time=cast(int, self._data["end_time"].max()),
             num_rows=len(self._data),
         )
 

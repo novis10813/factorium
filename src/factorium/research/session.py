@@ -89,8 +89,8 @@ class ResearchSession:
             >>> session.create_factor("ts_mean(close, 20)", "ma20")
             >>> session.create_factor(lambda agg: agg["close"].ts_return(20), "ret_20d")
         """
-        # Generate cache key
-        cache_key = name or (expr if isinstance(expr, str) else id(expr))
+        # Generate cache key (always use str)
+        cache_key: str = name if name else (expr if isinstance(expr, str) else str(id(expr)))
 
         # Return cached if exists
         if cache_key in self._factors:
@@ -105,10 +105,13 @@ class ResearchSession:
                     raise TypeError(f"Expected Factor for column {expr}, got {type(res)}")
                 factor = res
             else:
-                # Build context for parser
-                context = {
-                    col: self.data[col] for col in self.data.cols if col not in ["start_time", "end_time", "symbol"]
-                }
+                # Build context for parser (only include Factor types)
+                context: dict[str, Factor] = {}
+                for col in self.data.cols:
+                    if col not in ["start_time", "end_time", "symbol"]:
+                        item = self.data[col]
+                        if isinstance(item, Factor):
+                            context[col] = item
                 factor = self._parser.parse(expr, context)
 
             if name:
@@ -214,8 +217,8 @@ class ResearchSession:
         backtest = self.backtest(factor)
 
         # Format report
-        # Type narrowing: quick_report uses single period, so ic_summary is dict[str, float]
-        ic_summary: dict[str, float] = analysis.ic_summary  # type: ignore[assignment]
+        # ic_summary is now always dict[int, dict[str, float]]
+        ic_stats = analysis.ic_summary.get(periods, {})
         metrics = backtest.metrics
 
         report = f"""
@@ -223,9 +226,9 @@ Factor Analysis Report: {factor.name}
 {"=" * 60}
 
 IC Analysis (periods={periods}):
-  Mean IC:        {ic_summary.get("mean_ic", 0):.4f}
-  IC Std:         {ic_summary.get("ic_std", 0):.4f}
-  IC IR:          {ic_summary.get("ic_ir", 0):.4f}
+  Mean IC:        {ic_stats.get("mean_ic", 0):.4f}
+  IC Std:         {ic_stats.get("ic_std", 0):.4f}
+  IC IR:          {ic_stats.get("ic_ir", 0):.4f}
 
 Backtest Performance:
   Total Return:   {metrics.get("total_return", 0):.2%}

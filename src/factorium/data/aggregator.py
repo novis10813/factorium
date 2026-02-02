@@ -1,7 +1,7 @@
 """DuckDB-based bar aggregator for high-performance OHLCV aggregation."""
 
 import logging
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, cast
 
 import duckdb
 import polars as pl
@@ -71,8 +71,8 @@ class BarAggregator:
 
         return AggBarMetadata(
             symbols=symbols,
-            min_time=min_time,
-            max_time=max_time,
+            min_time=cast(int, min_time),
+            max_time=cast(int, max_time),
             num_rows=num_rows,
         )
 

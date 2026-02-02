@@ -19,9 +19,7 @@ if TYPE_CHECKING:
 
 
 class BaseFactor(ABC):
-    def __init__(
-        self, data: Union["AggBar", pd.DataFrame, pl.DataFrame, pl.LazyFrame, Path], name: str | None = None
-    ):
+    def __init__(self, data: Union["AggBar", pd.DataFrame, pl.DataFrame, pl.LazyFrame, Path], name: str | None = None):
         self._name = name or "factor"
         self._lf = self._to_lazy(data)
 
@@ -345,10 +343,10 @@ class BaseFactor(ABC):
     def __ge__(self, other: Union["BaseFactor", float]) -> Self:
         return self._comparison_op(other, lambda x, y: x >= y, ">=")
 
-    def __eq__(self, other: Union["BaseFactor", float]) -> Self:
+    def __eq__(self, other: Union["BaseFactor", float]) -> Self:  # type: ignore[override]
         return self._comparison_op(other, lambda x, y: x == y, "==")
 
-    def __ne__(self, other: Union["BaseFactor", float]) -> Self:
+    def __ne__(self, other: Union["BaseFactor", float]) -> Self:  # type: ignore[override]
         return self._comparison_op(other, lambda x, y: x != y, "!=")
 
     def __len__(self) -> int:
@@ -358,4 +356,4 @@ class BaseFactor(ABC):
         which is much faster than collecting the full dataset but still
         requires execution. Avoid calling in tight loops.
         """
-        return self._lf.select(pl.len()).collect().item()
+        return int(self._lf.select(pl.len()).collect().item())

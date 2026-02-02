@@ -198,8 +198,11 @@ def test_analyze_returns_dataclass(sample_data):
 
     assert isinstance(result, FactorAnalysisResult)
     assert result.factor_name == "my_factor"
-    assert result.periods == 1
-    assert "mean_ic" in result.ic_summary
+    # periods is always a list now
+    assert result.periods == [1]
+    # ic_summary is always dict[int, dict[str, float]] now
+    assert 1 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
     assert hasattr(result, "to_dict")
 
 
@@ -279,11 +282,11 @@ def test_save_creates_correct_structure(sample_data):
         assert (exp_dir / "ic_series.csv").exists()
         assert (exp_dir / "ic_summary.csv").exists()
         assert (exp_dir / "turnover.csv").exists()
-        assert (exp_dir / "quantile_returns.csv").exists()
+        assert (exp_dir / "quantile_returns_period_1.csv").exists()
 
         # cumulative_returns may be None
         if result.cumulative_returns is not None:
-            assert (exp_dir / "cumulative_returns.csv").exists()
+            assert (exp_dir / "cumulative_returns_period_1.csv").exists()
 
         # Check config.json exists and has correct structure
         config_path = exp_dir / "config.json"
@@ -324,7 +327,7 @@ def test_save_generates_plots(sample_data):
         # Check plot files exist
         assert (plots_dir / "ic_timeseries.png").exists()
         assert (plots_dir / "ic_distribution.png").exists()
-        assert (plots_dir / "quantile_returns.png").exists()
+        assert (plots_dir / "quantile_returns_period_1.png").exists()
 
 
 def test_analyze_multi_horizon_returns_list_periods(sample_data):
@@ -359,8 +362,8 @@ def test_analyze_multi_horizon_ic_summary_structure(sample_data):
     assert "mean_ic" in result.ic_summary[5]
 
 
-def test_analyze_single_horizon_backward_compatible(sample_data):
-    """單一 horizon 時保持向後相容。"""
+def test_analyze_single_horizon_consistent_format(sample_data):
+    """單一 horizon 時格式與多 horizon 一致（統一為 dict[int, dict]）。"""
     agg = AggBar(sample_data)
     factor = agg["my_factor"]
     prices = agg["close"]
@@ -368,11 +371,14 @@ def test_analyze_single_horizon_backward_compatible(sample_data):
     analyzer = FactorAnalyzer(factor, prices)
     result = analyzer.analyze(periods=1)
 
-    # 單一 horizon 時 ic_summary 應為 {"mean_ic": ..., ...}
-    assert isinstance(result.periods, int)
-    assert result.periods == 1
-    assert "mean_ic" in result.ic_summary
-    assert isinstance(result.ic_summary["mean_ic"], float)
+    # periods 現在總是 list[int]
+    assert isinstance(result.periods, list)
+    assert result.periods == [1]
+    # ic_summary 現在總是 dict[int, dict[str, float]]
+    assert isinstance(result.ic_summary, dict)
+    assert 1 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
+    assert isinstance(result.ic_summary[1]["mean_ic"], float)
 
 
 def test_repr_multi_horizon(sample_data):

@@ -1,6 +1,5 @@
 """Performance metrics calculation for backtesting."""
 
-
 import numpy as np
 import pandas as pd
 
@@ -90,5 +89,5 @@ def calculate_metrics(
         "var_95": var_95,
         "cvar_95": cvar_95,
         "win_rate": float(win_rate),
-        "profit_factor": profit_factor,
+        "profit_factor": float(profit_factor),
     }
