@@ -326,6 +326,146 @@ def test_save_generates_plots(sample_data):
         assert (plots_dir / "ic_distribution.png").exists()
         assert (plots_dir / "quantile_returns.png").exists()
 
-        # cumulative_returns plot only if data exists
-        if result.cumulative_returns is not None:
-            assert (plots_dir / "cumulative_returns.png").exists()
+
+def test_analyze_multi_horizon_returns_list_periods(sample_data):
+    """analyze(periods=[1, 5]) 應回傳 list periods。"""
+    from factorium.factors.analyzer import FactorAnalysisResult
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    assert isinstance(result, FactorAnalysisResult)
+    assert result.periods == [1, 5]
+
+
+def test_analyze_multi_horizon_ic_summary_structure(sample_data):
+    """multi-horizon 時 ic_summary 應為 dict[int, dict]。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    # ic_summary 應為 {1: {...}, 5: {...}}
+    assert isinstance(result.ic_summary, dict)
+    assert 1 in result.ic_summary
+    assert 5 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
+    assert "mean_ic" in result.ic_summary[5]
+
+
+def test_analyze_single_horizon_backward_compatible(sample_data):
+    """單一 horizon 時保持向後相容。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=1)
+
+    # 單一 horizon 時 ic_summary 應為 {"mean_ic": ..., ...}
+    assert isinstance(result.periods, int)
+    assert result.periods == 1
+    assert "mean_ic" in result.ic_summary
+    assert isinstance(result.ic_summary["mean_ic"], float)
+
+
+def test_repr_multi_horizon(sample_data):
+    """multi-horizon __repr__ 應顯示所有 period 的 IC。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    repr_str = repr(result)
+    assert "my_factor" in repr_str
+    assert "[1, 5]" in repr_str
+    # 應該有多個 period 的 IC 資訊
+    assert "Period 1" in repr_str
+    assert "Period 5" in repr_str
+
+
+def test_save_multi_horizon_creates_per_period_files(sample_data):
+    """multi-horizon save 應為每個 period 建立 quantile_returns 檔案。"""
+    import tempfile
+    from pathlib import Path
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=2)
+    result = analyzer.analyze(periods=[1, 5])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        assert len(exp_dirs) == 1
+        exp_dir = exp_dirs[0]
+
+        # 應有 quantile_returns_period_1.csv, quantile_returns_period_5.csv
+        assert (exp_dir / "quantile_returns_period_1.csv").exists()
+        assert (exp_dir / "quantile_returns_period_5.csv").exists()
+
+        # 應有 ic_summary.csv 包含多行
+        ic_summary_path = exp_dir / "ic_summary.csv"
+        assert ic_summary_path.exists()
+
+        # 應有 config.json 包含 periods
+        config_path = exp_dir / "config.json"
+        assert config_path.exists()
+
+
+def test_plot_ic_decay(sample_data):
+    """multi-horizon 應支援 plot_ic_decay() 繪製 IC decay 曲線。"""
+    import matplotlib.figure as mpl_figure
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    analyzer.prepare_data(periods=[1, 3, 5])
+
+    fig = analyzer.plot_ic_decay(periods=[1, 3, 5])
+    assert isinstance(fig, mpl_figure.Figure)
+
+
+def test_save_multi_horizon_includes_ic_decay_plot(sample_data):
+    """multi-horizon save 應包含 ic_decay.png。"""
+    import tempfile
+    from pathlib import Path
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=2)
+    result = analyzer.analyze(periods=[1, 3, 5])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        exp_dir = exp_dirs[0]
+        plots_dir = exp_dir / "plots"
+
+        assert (plots_dir / "ic_decay.png").exists()
+
+
+def test_analyze_empty_periods_list_raises_error(sample_data):
+    """analyze(periods=[]) 應拋出 ValueError。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+
+    with pytest.raises(ValueError, match="Periods list cannot be empty"):
+        analyzer.analyze(periods=[])

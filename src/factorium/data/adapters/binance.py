@@ -1,7 +1,5 @@
 """Binance exchange adapter."""
 
-from pathlib import Path
-
 from .base import BaseExchangeAdapter, ColumnMapping
 
 
@@ -51,7 +49,7 @@ class BinanceAdapter(BaseExchangeAdapter):
 
     def build_parquet_glob(
         self,
-        base_path: Path,
+        base_path: str,
         symbols: list[str],
         data_type: str,
         market_type: str,
@@ -71,7 +69,7 @@ class BinanceAdapter(BaseExchangeAdapter):
             # For multiple symbols, we'll filter in SQL instead
             symbol_pattern = "symbol=*"
 
-        return str(base_path / f"market={market_str}" / f"data_type={data_type}" / symbol_pattern / "**/*.parquet")
+        return f"{base_path}/market={market_str}/data_type={data_type}/{symbol_pattern}/**/*.parquet"
 
     def get_download_url(
         self,

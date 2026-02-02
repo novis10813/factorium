@@ -1,6 +1,7 @@
 """DuckDB-based bar aggregator for high-performance OHLCV aggregation."""
 
 import logging
+from typing import Callable, Optional
 
 import duckdb
 import polars as pl
@@ -8,6 +9,9 @@ import polars as pl
 from .adapters.base import ColumnMapping
 
 logger = logging.getLogger(__name__)
+
+# Type alias for DuckDB connection configurator
+DuckDBConfigurator = Callable[[duckdb.DuckDBPyConnection], None]
 
 
 class BarAggregator:
@@ -20,7 +24,31 @@ class BarAggregator:
     - Memory efficient: aggregation happens in DuckDB
     - Fast: uses DuckDB's vectorized execution engine
     - Scalable: handles large datasets that don't fit in memory
+
+    Args:
+        duckdb_configurator: Optional callback to configure DuckDB connection
+                             (e.g., for S3 credentials). Called before queries.
     """
+
+    def __init__(self, duckdb_configurator: Optional[DuckDBConfigurator] = None):
+        """Initialize the aggregator.
+
+        Args:
+            duckdb_configurator: Optional function to configure DuckDB connection.
+                                 Used for S3 backends to set credentials/endpoint.
+        """
+        self._duckdb_configurator = duckdb_configurator
+
+    def _get_connection(self) -> duckdb.DuckDBPyConnection:
+        """Get a configured DuckDB connection.
+
+        Returns:
+            A DuckDB connection, optionally configured via the configurator.
+        """
+        conn = duckdb.connect()
+        if self._duckdb_configurator:
+            self._duckdb_configurator(conn)
+        return conn
 
     def _compute_metadata(self, df: pl.DataFrame) -> "AggBarMetadata":
         """Compute metadata from aggregated DataFrame.
@@ -158,7 +186,7 @@ class BarAggregator:
         """
 
         try:
-            with duckdb.connect() as conn:
+            with self._get_connection() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
@@ -268,7 +296,7 @@ class BarAggregator:
         """
 
         try:
-            with duckdb.connect() as conn:
+            with self._get_connection() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
@@ -413,7 +441,7 @@ class BarAggregator:
         """
 
         try:
-            with duckdb.connect() as conn:
+            with self._get_connection() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
@@ -556,7 +584,7 @@ class BarAggregator:
         """
 
         try:
-            with duckdb.connect() as conn:
+            with self._get_connection() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
