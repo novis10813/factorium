@@ -9,6 +9,14 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    services:
+      minio:
+        image: bitnami/minio:latest
+        ports:
+          - 9000:9000
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
     strategy:
       fail-fast: false
       matrix:
@@ -25,9 +33,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --python ${{ matrix.python-version }} --group dev
+        run: uv sync --python ${{ matrix.python-version }} --group dev --extra s3
 
       - name: Run tests
+        env:
+          MINIO_ENDPOINT: localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          AWS_ENDPOINT_URL: http://localhost:9000
         run: uv run --python ${{ matrix.python-version }} pytest
 
   # TODO: Add lint job after fixing existing lint/type errors

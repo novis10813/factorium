@@ -540,12 +540,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
 jupyter = [
     { name = "nest-asyncio" },
 ]
@@ -571,7 +565,6 @@ requires-dist = [
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.26.0" },
     { name = "duckdb", specifier = ">=1.0.0" },
     { name = "matplotlib", specifier = ">=3.7.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "nest-asyncio", marker = "extra == 'jupyter'", specifier = ">=1.5.0" },
     { name = "numba", specifier = ">=0.57.0" },
     { name = "numpy", specifier = ">=1.24.0" },
@@ -579,12 +572,9 @@ requires-dist = [
     { name = "polars", specifier = ">=1.0.0" },
     { name = "pyarrow", specifier = ">=14.0.0" },
     { name = "pyparsing", specifier = ">=3.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "scipy", specifier = ">=1.10.0" },
 ]
-provides-extras = ["jupyter", "dev", "s3"]
+provides-extras = ["jupyter", "s3"]
 
 [package.metadata.requires-dev]
 dev = [

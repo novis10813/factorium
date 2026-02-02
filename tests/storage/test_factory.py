@@ -4,6 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+try:
+    import boto3
+    has_boto3 = True
+except ImportError:
+    has_boto3 = False
 
 from factorium.storage import get_storage_backend, LocalStorageBackend
 
@@ -32,6 +37,7 @@ class TestGetStorageBackend:
         with pytest.raises(ValueError, match="Unknown backend"):
             get_storage_backend("unknown", str(temp_dir))
 
+    @pytest.mark.skipif(not has_boto3, reason="boto3 not installed")
     def test_s3_backend_creates_instance(self):
         """S3 backend should create S3StorageBackend instance."""
         with patch("factorium.storage.s3.boto3"):

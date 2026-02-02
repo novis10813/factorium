@@ -5,8 +5,14 @@ import io
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 import polars as pl
+try:
+    import boto3
+    has_boto3 = True
+except ImportError:
+    has_boto3 = False
 
 
+@pytest.mark.skipif(not has_boto3, reason="boto3 not installed")
 class TestS3StorageBackend:
     """Tests for S3StorageBackend with mocked boto3."""
 
