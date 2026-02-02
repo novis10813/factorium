@@ -9,6 +9,7 @@ import polars as pl
 import pytest
 
 from factorium.data.cache import BarCache
+from factorium.storage import LocalStorageBackend
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ class TestBarCachePolars:
 
     def test_put_and_get_polars(self, temp_cache_dir, sample_bar_df_polars):
         """Test storing and retrieving Polars DataFrame from cache."""
-        cache = BarCache(cache_dir=temp_cache_dir)
+        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
 
         cache.put(
             df=sample_bar_df_polars,
@@ -69,7 +70,7 @@ class TestBarCachePolars:
 
     def test_get_returns_none_when_not_cached(self, temp_cache_dir):
         """Test that get returns None if data not in cache."""
-        cache = BarCache(cache_dir=temp_cache_dir)
+        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
 
         result = cache.get(
             exchange="binance",
@@ -84,7 +85,7 @@ class TestBarCachePolars:
 
     def test_get_range_returns_polars(self, temp_cache_dir, sample_bar_df_polars):
         """Test get_range returns concatenated Polars DataFrame."""
-        cache = BarCache(cache_dir=temp_cache_dir)
+        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
 
         # Store data for 3 consecutive days
         for day in range(1, 4):
@@ -114,7 +115,7 @@ class TestBarCachePolars:
 
     def test_get_range_returns_none_if_any_missing(self, temp_cache_dir, sample_bar_df_polars):
         """Test get_range returns None if any day missing from range."""
-        cache = BarCache(cache_dir=temp_cache_dir)
+        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
 
         # Store data for days 1 and 3, but skip day 2
         for day in [1, 3]:
@@ -143,7 +144,7 @@ class TestBarCachePolars:
 
     def test_put_and_get_preserves_data_types(self, temp_cache_dir):
         """Test that data types are preserved through cache round-trip."""
-        cache = BarCache(cache_dir=temp_cache_dir)
+        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
 
         df = pl.DataFrame(
             {
