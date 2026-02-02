@@ -1,7 +1,6 @@
 # src/factorium/storage/s3.py
 """S3 storage backend using DuckDB for Parquet operations."""
 
-from typing import List
 import io
 import os
 
@@ -120,7 +119,7 @@ class S3StorageBackend(StorageBackend):
                 return False
             raise
 
-    def glob(self, pattern: str) -> List[str]:
+    def glob(self, pattern: str) -> list[str]:
         """List objects matching pattern in S3."""
         import fnmatch
 

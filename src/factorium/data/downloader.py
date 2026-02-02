@@ -8,12 +8,10 @@ import argparse
 import asyncio
 import hashlib
 import logging
-import os
 import tempfile
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import aiofiles  # type: ignore[import-untyped]
 import aiohttp
@@ -67,9 +65,9 @@ class BinanceDataDownloader:
         data_type: str,
         market_type: str,
         futures_type: str = "cm",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        days: Optional[int] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        days: int | None = None,
     ) -> None:
         """
         Download data for specified parameters.
@@ -181,7 +179,7 @@ class BinanceDataDownloader:
     async def _verify_checksum(self, data_file: Path, checksum_file: Path) -> bool:
         """Verify file checksum."""
         try:
-            async with aiofiles.open(checksum_file, "r") as f:
+            async with aiofiles.open(checksum_file) as f:
                 expected_checksum = (await f.read()).split()[0]
 
             async with aiofiles.open(data_file, "rb") as f:
@@ -211,8 +209,8 @@ class BinanceDataDownloader:
             raise ValueError("Invalid futures type")
 
     def _calculate_date_range(
-        self, start_date: Optional[str], end_date: Optional[str], days: Optional[int]
-    ) -> Tuple[datetime, datetime]:
+        self, start_date: str | None, end_date: str | None, days: int | None
+    ) -> tuple[datetime, datetime]:
         """Calculate date range."""
         try:
             if start_date and end_date:
@@ -250,7 +248,7 @@ class BinanceDataDownloader:
         temp_dir.mkdir(parents=True, exist_ok=True)
         return temp_dir
 
-    def _generate_date_list(self, start_date: datetime, end_date: datetime) -> List[datetime]:
+    def _generate_date_list(self, start_date: datetime, end_date: datetime) -> list[datetime]:
         """Generate list of dates."""
         dates = []
         current = start_date

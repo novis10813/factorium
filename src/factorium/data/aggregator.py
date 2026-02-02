@@ -1,12 +1,16 @@
 """DuckDB-based bar aggregator for high-performance OHLCV aggregation."""
 
 import logging
-from typing import TYPE_CHECKING, Callable, Optional, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 import duckdb
 import polars as pl
 
 from .adapters.base import ColumnMapping
+
+if TYPE_CHECKING:
+    from .metadata import AggBarMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,7 @@ class BarAggregator:
                              (e.g., for S3 credentials). Called before queries.
     """
 
-    def __init__(self, duckdb_configurator: Optional[DuckDBConfigurator] = None):
+    def __init__(self, duckdb_configurator: DuckDBConfigurator | None = None):
         """Initialize the aggregator.
 
         Args:

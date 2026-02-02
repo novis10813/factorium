@@ -2,7 +2,6 @@
 """Local filesystem storage backend."""
 
 from pathlib import Path
-from typing import List
 
 import polars as pl
 
@@ -52,7 +51,7 @@ class LocalStorageBackend(StorageBackend):
     def exists(self, path: str) -> bool:
         return self._resolve_path(path).exists()
 
-    def glob(self, pattern: str) -> List[str]:
+    def glob(self, pattern: str) -> list[str]:
         matches = list(self.base_path.glob(pattern))
         return [str(m.relative_to(self.base_path)) for m in matches]
 

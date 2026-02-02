@@ -26,6 +26,7 @@ class BarCache:
     """
 
     storage: StorageBackend
+    cache_dir: Path | None  # for backward compatibility only
 
     def __init__(
         self,
