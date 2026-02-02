@@ -4,14 +4,13 @@ Parquet storage utilities with Hive partitioning support.
 Provides functions for CSV to Parquet conversion and optimized reading via DuckDB.
 """
 
-import pyarrow as pa
+import logging
+from pathlib import Path
+
+import duckdb
+import pandas as pd
 import pyarrow.csv as pv
 import pyarrow.parquet as pq
-import duckdb
-from pathlib import Path
-from typing import Optional, List
-import pandas as pd
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ def _detect_has_header(csv_path: Path) -> bool:
     Detect if CSV has a header by checking if first row contains numeric values.
     Binance data without headers will have numeric first column (trade id).
     """
-    with open(csv_path, 'r') as f:
+    with open(csv_path) as f:
         first_line = f.readline().strip()
         if not first_line:
             return False
@@ -55,7 +54,7 @@ def csv_to_parquet(
     output_dir: Path,
     compression: str = 'zstd',
     filename: str = 'data.parquet',
-    data_type: Optional[str] = None,
+    data_type: str | None = None,
 ) -> Path:
     """
     Convert CSV file to Parquet format in target directory.
@@ -74,9 +73,9 @@ def csv_to_parquet(
         Path to created Parquet file
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     has_header = _detect_has_header(csv_path)
-    
+
     if has_header:
         # CSV has headers, read normally
         table = pv.read_csv(csv_path)
@@ -91,7 +90,7 @@ def csv_to_parquet(
             # Fallback: read with auto-generated column names
             logger.warning(f"No column definitions for data_type={data_type}, using auto-generated names")
             table = pv.read_csv(csv_path)
-    
+
     out_path = output_dir / filename
     pq.write_table(table, out_path, compression=compression)
     logger.debug(f"Converted {csv_path} -> {out_path}")
@@ -100,8 +99,8 @@ def csv_to_parquet(
 
 def read_hive_parquet(
     base_path: str,
-    columns: Optional[List[str]] = None,
-    where: Optional[str] = None,
+    columns: list[str] | None = None,
+    where: str | None = None,
 ) -> pd.DataFrame:
     """
     Read Parquet files with Hive partitioning via DuckDB.

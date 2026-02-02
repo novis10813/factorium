@@ -9,15 +9,16 @@ Example:
     >>> print(result.metrics)
 """
 
-from typing import Optional, Union, Dict, Any, List, Callable
-import polars as pl
-import pandas as pd
+from collections.abc import Callable
 from pathlib import Path
 
+import pandas as pd
+import polars as pl
+
 from ..aggbar import AggBar
+from ..backtest.vectorized import BacktestResult, VectorizedBacktester
 from ..factors.core import Factor
 from ..factors.parser import FactorExpressionParser
-from ..backtest.vectorized import VectorizedBacktester, BacktestResult
 
 
 class ResearchSession:
@@ -42,7 +43,7 @@ class ResearchSession:
 
     def __init__(
         self,
-        data: Union[AggBar, pd.DataFrame, pl.DataFrame],
+        data: AggBar | pd.DataFrame | pl.DataFrame,
         default_frequency: str = "1h",
         default_initial_capital: float = 10000.0,
         default_transaction_cost: float = 0.0003,
@@ -55,20 +56,20 @@ class ResearchSession:
         self.default_frequency = default_frequency
         self.default_initial_capital = default_initial_capital
         self.default_transaction_cost = default_transaction_cost
-        self._factors: Dict[str, Factor] = {}  # Cache for created factors
+        self._factors: dict[str, Factor] = {}  # Cache for created factors
         self._parser = FactorExpressionParser()
 
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         """Return list of symbols in the data."""
         return self.data.symbols
 
     @property
-    def cols(self) -> List[str]:
+    def cols(self) -> list[str]:
         """Return list of columns in the data."""
         return self.data.cols
 
-    def create_factor(self, expr: Union[str, Callable[[AggBar], Factor]], name: Optional[str] = None) -> Factor:
+    def create_factor(self, expr: str | Callable[[AggBar], Factor], name: str | None = None) -> Factor:
         """
         Create and cache a factor from expression or callable.
 
@@ -121,26 +122,26 @@ class ResearchSession:
         return factor
 
     @classmethod
-    def from_csv(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+    def from_csv(cls, path: str | Path, **kwargs) -> "ResearchSession":
         """Create ResearchSession from CSV file."""
         aggbar = AggBar.from_csv(Path(path))
         return cls(aggbar, **kwargs)
 
     @classmethod
-    def from_parquet(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+    def from_parquet(cls, path: str | Path, **kwargs) -> "ResearchSession":
         """Create ResearchSession from Parquet file."""
         df = pl.read_parquet(path)
         aggbar = AggBar.from_df(df)
         return cls(aggbar, **kwargs)
 
     @classmethod
-    def from_df(cls, df: Union[pd.DataFrame, pl.DataFrame], **kwargs) -> "ResearchSession":
+    def from_df(cls, df: pd.DataFrame | pl.DataFrame, **kwargs) -> "ResearchSession":
         """Create ResearchSession from DataFrame."""
         aggbar = AggBar.from_df(df)
         return cls(aggbar, **kwargs)
 
     @classmethod
-    def load(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+    def load(cls, path: str | Path, **kwargs) -> "ResearchSession":
         """
         Auto-detect format and load data.
 
@@ -260,9 +261,9 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
         signal: Factor,
         neutralization: str = "market",
         entry_price: str = "close",
-        frequency: Optional[str] = None,
-        initial_capital: Optional[float] = None,
-        transaction_cost: Optional[float] = None,
+        frequency: str | None = None,
+        initial_capital: float | None = None,
+        transaction_cost: float | None = None,
     ) -> BacktestResult:
         """
         Run backtest with given signal.
@@ -301,9 +302,9 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
 
     def slice(
         self,
-        start: Optional[Union[int, str]] = None,
-        end: Optional[Union[int, str]] = None,
-        symbols: Optional[List[str]] = None,
+        start: int | str | None = None,
+        end: int | str | None = None,
+        symbols: list[str] | None = None,
     ) -> "ResearchSession":
         """
         Create new session with subset of data.

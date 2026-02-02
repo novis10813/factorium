@@ -5,7 +5,7 @@ This module provides functional-style wrappers for all Factor operations,
 enabling expression-based factor construction similar to alpha101.
 """
 
-from typing import TYPE_CHECKING, Union, List
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -178,7 +178,7 @@ def cs_demean(factor: "Factor") -> "Factor":
     return factor.cs_demean()
 
 
-def cs_winsorize(factor: "Factor", limits: Union[float, List[float]] = 0.025) -> "Factor":
+def cs_winsorize(factor: "Factor", limits: float | list[float] = 0.025) -> "Factor":
     """Functional version of factor.cs_winsorize(limits)"""
     return factor.cs_winsorize(limits)
 

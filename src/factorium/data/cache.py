@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import polars as pl
 
-from ..storage import StorageBackend, LocalStorageBackend
+from ..storage import LocalStorageBackend, StorageBackend
 
 
 class BarCache:

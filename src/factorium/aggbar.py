@@ -5,16 +5,17 @@ AggBar provides a unified interface for working with OHLCV data
 across multiple symbols in long format.
 """
 
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, Union
+
+import numpy as np
 import pandas as pd
 import polars as pl
-import numpy as np
-from typing import Union, List, Optional, TYPE_CHECKING
-from pathlib import Path
-from datetime import datetime
 
 if TYPE_CHECKING:
-    from .factors.core import Factor
     from .data.metadata import AggBarMetadata
+    from .factors.core import Factor
 
 
 class AggBar:
@@ -38,11 +39,10 @@ class AggBar:
 
     def __init__(
         self,
-        data: Union[List["BaseBar"], pd.DataFrame, pl.DataFrame],
+        data: list["BaseBar"] | pd.DataFrame | pl.DataFrame,
         metadata: Optional["AggBarMetadata"] = None,
     ):
         # Import here to avoid circular imports
-        from .data.metadata import AggBarMetadata
 
         # Convert to Polars
         if isinstance(data, list):
@@ -85,12 +85,12 @@ class AggBar:
         )
 
     @classmethod
-    def from_bars(cls, bars: List) -> "AggBar":
+    def from_bars(cls, bars: list) -> "AggBar":
         """Create AggBar from a list of BaseBar objects."""
         return cls(bars)
 
     @classmethod
-    def from_df(cls, df: Union[pd.DataFrame, pl.DataFrame]) -> "AggBar":
+    def from_df(cls, df: pd.DataFrame | pl.DataFrame) -> "AggBar":
         """Create AggBar from a DataFrame."""
         return cls(df)
 
@@ -123,7 +123,7 @@ class AggBar:
         self._data.write_parquet(path)
         return path
 
-    def __getitem__(self, key: Union[str, List[str]]) -> Union["Factor", "AggBar"]:
+    def __getitem__(self, key: str | list[str]) -> Union["Factor", "AggBar"]:
         """
         Get a column as a Factor or multiple columns as a new AggBar.
 
@@ -156,9 +156,9 @@ class AggBar:
 
     def slice(
         self,
-        start: Optional[Union[datetime, int, str]] = None,
-        end: Optional[Union[datetime, int, str]] = None,
-        symbols: Optional[List[str]] = None,
+        start: datetime | int | str | None = None,
+        end: datetime | int | str | None = None,
+        symbols: list[str] | None = None,
     ) -> "AggBar":
         """
         Slice data by time range and/or symbols.
@@ -172,7 +172,7 @@ class AggBar:
             New AggBar with filtered data
         """
 
-        def convert_timestamp(value: Optional[Union[datetime, int, str]]) -> Optional[int]:
+        def convert_timestamp(value: datetime | int | str | None) -> int | None:
             if value is None:
                 return None
             if isinstance(value, str):
@@ -211,12 +211,12 @@ class AggBar:
         return AggBar(self._data.filter(cond))
 
     @property
-    def cols(self) -> List[str]:
+    def cols(self) -> list[str]:
         """Return list of column names."""
         return self._data.columns
 
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         """Return list of unique symbols from metadata."""
         return self._metadata.symbols
 

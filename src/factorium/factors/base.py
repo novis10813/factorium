@@ -1,14 +1,16 @@
-from typing import Union, Optional, Callable, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Union
 
 try:
     from typing import Self
 except ImportError:
-    from typing_extensions import Self
+    from typing import Self
 from abc import ABC
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import polars as pl
-from pathlib import Path
-import numpy as np
 
 from ..constants import EPSILON
 
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
 class BaseFactor(ABC):
     def __init__(
-        self, data: Union["AggBar", pd.DataFrame, pl.DataFrame, pl.LazyFrame, Path], name: Optional[str] = None
+        self, data: Union["AggBar", pd.DataFrame, pl.DataFrame, pl.LazyFrame, Path], name: str | None = None
     ):
         self._name = name or "factor"
         self._lf = self._to_lazy(data)
@@ -153,7 +155,7 @@ class BaseFactor(ABC):
         return self.__class__(pl_df, name)
 
     def _binary_op(
-        self, other: Union["BaseFactor", float], op_func: Callable, op_name: str, scalar_suffix: Optional[str] = None
+        self, other: Union["BaseFactor", float], op_func: Callable, op_name: str, scalar_suffix: str | None = None
     ) -> Self:
         if isinstance(other, self.__class__):
             # Use Polars LazyFrame join for factor-factor operations

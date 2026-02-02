@@ -1,12 +1,14 @@
-import pandas as pd
-import polars as pl
-import numpy as np
 import logging
 from dataclasses import dataclass
-from typing import Union, List, Optional, Dict, Any
-from .core import Factor
-from ..aggbar import AggBar
+from typing import Any
+
 import matplotlib.figure as mpl_figure
+import numpy as np
+import pandas as pd
+import polars as pl
+
+from ..aggbar import AggBar
+from .core import Factor
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +37,16 @@ class FactorAnalysisResult:
     """
 
     factor_name: str
-    periods: Union[int, List[int]]
+    periods: int | list[int]
     quantiles: int
     ic_series: pd.DataFrame
-    ic_summary: Union[Dict[str, float], Dict[int, Dict[str, float]]]
+    ic_summary: dict[str, float] | dict[int, dict[str, float]]
     turnover_series: pd.Series
     turnover_mean: float
-    quantile_returns: Union[pd.DataFrame, Dict[int, pd.DataFrame]]
-    cumulative_returns: Optional[Union[pd.DataFrame, Dict[int, pd.DataFrame]]] = None
+    quantile_returns: pd.DataFrame | dict[int, pd.DataFrame]
+    cumulative_returns: pd.DataFrame | dict[int, pd.DataFrame] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
         return {
             "factor_name": self.factor_name,
@@ -125,10 +127,12 @@ class FactorAnalysisResult:
         Args:
             output_dir: Base directory for experiment outputs
         """
-        from pathlib import Path
-        from datetime import datetime
         import json
+        from datetime import datetime
+        from pathlib import Path
+
         import matplotlib.pyplot as plt
+
         from .plotting_analyzer import FactorAnalyzerPlotter
 
         # Create timestamped folder
@@ -266,7 +270,7 @@ class FactorAnalyzer:
     Analyzer for factor performance and characteristics.
     """
 
-    def __init__(self, factor: Factor, prices: Union[AggBar, Factor], quantiles: int = 5):
+    def __init__(self, factor: Factor, prices: AggBar | Factor, quantiles: int = 5):
         self.factor = factor
         self.quantiles = quantiles
         self._raw_prices = prices
@@ -279,7 +283,7 @@ class FactorAnalyzer:
         else:
             self.prices = prices
 
-    def analyze(self, price_col: str = "close", periods: Union[int, List[int]] = 1) -> FactorAnalysisResult:
+    def analyze(self, price_col: str = "close", periods: int | list[int] = 1) -> FactorAnalysisResult:
         """
         Run full factor analysis.
 
@@ -365,7 +369,7 @@ class FactorAnalyzer:
             cumulative_returns=cumulative_returns,
         )
 
-    def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pl.DataFrame:
+    def prepare_data(self, periods: list[int] | None = None, price_col: str | None = None) -> pl.DataFrame:
         """
         Prepare data for analysis by aligning factor values with future returns.
 
@@ -633,7 +637,7 @@ class FactorAnalyzer:
         plotter = FactorAnalyzerPlotter()
         return plotter.plot_cumulative_returns(cum_ret)
 
-    def plot_ic_decay(self, periods: Optional[List[int]] = None, method: str = "rank") -> mpl_figure.Figure:
+    def plot_ic_decay(self, periods: list[int] | None = None, method: str = "rank") -> mpl_figure.Figure:
         """
         Plot IC decay curve across multiple horizons.
 

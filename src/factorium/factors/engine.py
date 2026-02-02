@@ -1,8 +1,8 @@
 """Polars-based computation engine for high-performance factor operations."""
 
-import polars as pl
-import pandas as pd
 import numpy as np
+import pandas as pd
+import polars as pl
 
 from ..constants import EPSILON
 

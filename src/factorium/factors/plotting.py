@@ -4,12 +4,12 @@ Plotting utilities for Factor objects.
 Provides FactorPlotter class for visualizing factor data with various plot types.
 """
 
-from typing import Optional, List, Tuple, TYPE_CHECKING
 from datetime import datetime
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+from typing import TYPE_CHECKING
+
 import matplotlib.figure as mpl_figure
+import matplotlib.pyplot as plt
+import pandas as pd
 
 if TYPE_CHECKING:
     from .core import Factor
@@ -37,9 +37,9 @@ class FactorPlotter:
 
     def _filter_data(
         self,
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Filter data by symbols and time range.
@@ -71,10 +71,10 @@ class FactorPlotter:
 
     def plot_timeseries(
         self,
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        figsize: Tuple[int, int] = (12, 6),
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        figsize: tuple[int, int] = (12, 6),
         **kwargs,
     ) -> mpl_figure.Figure:
         """
@@ -117,10 +117,10 @@ class FactorPlotter:
 
     def plot_heatmap(
         self,
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        figsize: Tuple[int, int] = (14, 8),
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        figsize: tuple[int, int] = (14, 8),
         **kwargs,
     ) -> mpl_figure.Figure:
         """
@@ -186,10 +186,10 @@ class FactorPlotter:
 
     def plot_distribution(
         self,
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        figsize: Tuple[int, int] = (12, 6),
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        figsize: tuple[int, int] = (12, 6),
         dist_type: str = "histogram",
         **kwargs,
     ) -> mpl_figure.Figure:
@@ -260,10 +260,10 @@ class FactorPlotter:
     def plot(
         self,
         plot_type: str = "timeseries",
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        figsize: Tuple[int, int] = (12, 6),
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        figsize: tuple[int, int] = (12, 6),
         **kwargs,
     ) -> mpl_figure.Figure:
         """

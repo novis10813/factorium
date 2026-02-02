@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
-
 import warnings
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -27,7 +26,7 @@ class IterativeBacktestResult:
 
     equity_curve: pd.Series
     returns: pd.Series
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
     trades: pd.DataFrame
     portfolio_history: pd.DataFrame
 
@@ -64,10 +63,10 @@ class IterativeBacktester:
 
     def __init__(
         self,
-        prices: "AggBar",
-        signal: "Factor",
+        prices: AggBar,
+        signal: Factor,
         entry_price: str = "close",
-        transaction_cost: Union[float, tuple[float, float]] = 0.0003,
+        transaction_cost: float | tuple[float, float] = 0.0003,
         initial_capital: float = 10000.0,
         full_rebalance: bool = False,
         neutralization: Literal["market", "none"] = "market",
@@ -98,8 +97,8 @@ class IterativeBacktester:
 
         self._validate_inputs()
 
-        self._portfolio: Optional[Portfolio] = None
-        self._result: Optional[IterativeBacktestResult] = None
+        self._portfolio: Portfolio | None = None
+        self._result: IterativeBacktestResult | None = None
         self._price_map: dict[Any, Any] = {}
         self._signal_map: dict[Any, Any] = {}
 
@@ -167,9 +166,9 @@ class IterativeBacktester:
     def _generate_orders(
         self,
         target_holdings: pd.Series,
-        current_holdings: Dict[str, float],
-    ) -> Dict[str, float]:
-        orders: Dict[str, float] = {}
+        current_holdings: dict[str, float],
+    ) -> dict[str, float]:
+        orders: dict[str, float] = {}
         all_symbols = set(target_holdings.index) | set(current_holdings.keys())
 
         for symbol in all_symbols:
@@ -266,7 +265,7 @@ class IterativeBacktester:
 
         return self._result
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         if self._result is None:
             raise RuntimeError("Must call run() before summary()")
 
@@ -277,7 +276,7 @@ class IterativeBacktester:
             **self._result.metrics,
         }
 
-    def plot_equity(self, figsize: tuple[float, float] = (12, 6)) -> "matplotlib.figure.Figure":
+    def plot_equity(self, figsize: tuple[float, float] = (12, 6)) -> matplotlib.figure.Figure:
         import matplotlib.pyplot as plt
 
         if self._result is None:
