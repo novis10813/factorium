@@ -128,7 +128,7 @@ from .aggregator import BarAggregator
 from .cache import BarCache
 from .downloader import BinanceDataDownloader
 from .metadata import AggBarMetadata
-from .parquet import get_market_string, build_hive_path
+from .parquet import get_market_string
 
 
 class BinanceDataLoader:

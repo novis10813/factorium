@@ -36,6 +36,8 @@ class S3StorageBackend(StorageBackend):
 
     def _build_key(self, path: str) -> str:
         """Build full S3 key from relative path."""
+        if not path:
+            return self.prefix
         if self.prefix:
             return f"{self.prefix}/{path}"
         return path

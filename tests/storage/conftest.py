@@ -10,11 +10,16 @@ MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
 MINIO_TEST_BUCKET = os.environ.get("MINIO_TEST_BUCKET", "factorium-test")
 
 
+try:
+    from botocore.exceptions import EndpointConnectionError
+except ImportError:
+    EndpointConnectionError = Exception
+
 def is_minio_available() -> bool:
     """Check if MinIO is available for testing."""
     try:
         import boto3
-        from botocore.exceptions import ClientError, EndpointConnectionError
+        from botocore.exceptions import ClientError
 
         s3 = boto3.client(
             "s3",
