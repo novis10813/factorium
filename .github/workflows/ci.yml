@@ -22,7 +22,7 @@ jobs:
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            bitnami/minio:latest
+            quay.io/minio/minio:latest server /data
           
           # Wait for MinIO to start
           for i in {1..30}; do
