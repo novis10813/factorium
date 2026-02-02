@@ -7,8 +7,8 @@ Provides modular operations that can be mixed into factor classes:
     - CrossSectionalOpsMixin: Cross-sectional operations (rank, mean, etc.)
 """
 
+from .cs_ops import CrossSectionalOpsMixin
 from .math_ops import MathOpsMixin
 from .ts_ops import TimeSeriesOpsMixin
-from .cs_ops import CrossSectionalOpsMixin
 
 __all__ = ["MathOpsMixin", "TimeSeriesOpsMixin", "CrossSectionalOpsMixin"]

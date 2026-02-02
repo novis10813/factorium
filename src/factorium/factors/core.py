@@ -1,14 +1,14 @@
-import pandas as pd
-import matplotlib.figure as mpl_figure
-
-from typing import Union, Optional, List, Tuple, Dict, Any, TYPE_CHECKING
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Union
+
+import matplotlib.figure as mpl_figure
+import pandas as pd
 
 from .base import BaseFactor
+from .mixins.cs_ops import CrossSectionalOpsMixin
 from .mixins.math_ops import MathOpsMixin
 from .mixins.ts_ops import TimeSeriesOpsMixin
-from .mixins.cs_ops import CrossSectionalOpsMixin
 
 if TYPE_CHECKING:
     from ..aggbar import AggBar
@@ -34,11 +34,11 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
         >>> ranked.plot(plot_type='timeseries')
     """
 
-    def __init__(self, data: Union["AggBar", pd.DataFrame, Path], name: Optional[str] = None):
+    def __init__(self, data: Union["AggBar", pd.DataFrame, Path], name: str | None = None):
         super().__init__(data, name)
 
     @classmethod
-    def from_expression(cls, expr: str, context: Dict[str, "Factor"]) -> "Factor":
+    def from_expression(cls, expr: str, context: dict[str, "Factor"]) -> "Factor":
         """
         Create a Factor from an expression string.
 
@@ -66,7 +66,7 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
         prices: Union["Factor", "AggBar"],
         periods: int = 1,  # MVP 僅支援單一窗口
         quantiles: int = 5,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
         price_col: str = "close",
         **kwargs,
     ) -> "FactorAnalysisResult":
@@ -105,10 +105,10 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
     def plot(
         self,
         plot_type: str = "timeseries",
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        figsize: Tuple[int, int] = (12, 6),
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        figsize: tuple[int, int] = (12, 6),
         **kwargs,
     ) -> mpl_figure.Figure:
         """

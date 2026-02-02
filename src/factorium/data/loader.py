@@ -8,10 +8,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Literal
+from typing import Literal, cast
 
 import duckdb
-import pandas as pd
 import polars as pl
 
 from ..storage import get_storage_backend
@@ -24,7 +23,7 @@ def _run_async(coro):
     This is necessary for Jupyter notebooks which already have a running event loop.
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         # No running loop, use asyncio.run()
         return asyncio.run(coro)
@@ -122,13 +121,13 @@ def _normalize_timestamps_to_ms(df: pl.DataFrame, ts_unit: str) -> pl.DataFrame:
         raise ValueError(f"Unsupported timestamp unit: {ts_unit}")
 
 
-from ..aggbar import AggBar
-from .adapters.binance import BinanceAdapter
-from .aggregator import BarAggregator
-from .cache import BarCache
-from .downloader import BinanceDataDownloader
-from .metadata import AggBarMetadata
-from .parquet import get_market_string
+from ..aggbar import AggBar  # noqa: E402
+from .adapters.binance import BinanceAdapter  # noqa: E402
+from .aggregator import BarAggregator  # noqa: E402
+from .cache import BarCache  # noqa: E402
+from .downloader import BinanceDataDownloader  # noqa: E402
+from .metadata import AggBarMetadata  # noqa: E402
+from .parquet import get_market_string  # noqa: E402
 
 
 class BinanceDataLoader:
@@ -248,13 +247,13 @@ class BinanceDataLoader:
 
     def load_aggbar(
         self,
-        symbols: str | List[str],
+        symbols: str | list[str],
         data_type: str,
         market_type: str,
         futures_type: str = "um",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        days: Optional[int] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        days: int | None = None,
         bar_type: Literal["time", "tick", "volume", "dollar"] = "time",
         interval: float = 60_000,
         force_download: bool = False,
@@ -372,8 +371,8 @@ class BinanceDataLoader:
         market_str = self._get_market_string(market_type, futures_type)
 
         # Collect aggregated data
-        all_dfs: List[pl.DataFrame] = []
-        all_metadata: List[AggBarMetadata] = []
+        all_dfs: list[pl.DataFrame] = []
+        all_metadata: list[AggBarMetadata] = []
         current = start_dt
 
         # For non-time bars, process entire date range at once (no daily chunking)
@@ -448,8 +447,8 @@ class BinanceDataLoader:
                         # Compute metadata for cached data
                         cached_meta = AggBarMetadata(
                             symbols=cached_df["symbol"].unique().sort().to_list(),
-                            min_time=cached_df["start_time"].min(),
-                            max_time=cached_df["end_time"].max(),
+                            min_time=cast(int, cached_df["start_time"].min()),
+                            max_time=cast(int, cached_df["end_time"].max()),
                             num_rows=len(cached_df),
                         )
                         all_metadata.append(cached_meta)
@@ -516,7 +515,7 @@ class BinanceDataLoader:
         return AggBar(result_df, combined_meta)
 
     def _calculate_date_range(
-        self, start_date: Optional[str], end_date: Optional[str], days: Optional[int]
+        self, start_date: str | None, end_date: str | None, days: int | None
     ) -> tuple[datetime, datetime]:
         """Calculate date range."""
         if start_date and end_date:
@@ -538,13 +537,13 @@ class BinanceDataLoader:
 
     def load_aggbar_fast(
         self,
-        symbols: List[str],
+        symbols: list[str],
         data_type: str,
         market_type: str,
         futures_type: str = "um",
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        days: Optional[int] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        days: int | None = None,
         interval_ms: int = 60_000,
         force_download: bool = False,
         use_cache: bool = True,
@@ -598,7 +597,7 @@ class BinanceDataLoader:
 
     def _check_all_symbols_exist(
         self,
-        symbols: List[str],
+        symbols: list[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -613,7 +612,7 @@ class BinanceDataLoader:
 
     def _find_missing_files(
         self,
-        symbols: List[str],
+        symbols: list[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -702,7 +701,7 @@ class BinanceDataLoader:
 
     def _download_all_symbols(
         self,
-        symbols: List[str],
+        symbols: list[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -732,7 +731,7 @@ class BinanceDataLoader:
 
     def _load_klines_direct(
         self,
-        symbols: List[str],
+        symbols: list[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -766,7 +765,6 @@ class BinanceDataLoader:
         Returns:
             AggBar object containing klines OHLCV data with timestamps in milliseconds
         """
-        import duckdb
 
         adapter = BinanceAdapter()
         market_str = self._get_market_string(market_type, futures_type)
@@ -789,8 +787,8 @@ class BinanceDataLoader:
             self.storage.configure_duckdb_s3(con)
 
         sample_query = f"""
-            SELECT open_time 
-            FROM read_parquet('{parquet_pattern}', hive_partitioning=true) 
+            SELECT open_time
+            FROM read_parquet('{parquet_pattern}', hive_partitioning=true)
             LIMIT 1
         """
         sample_result = con.execute(sample_query).fetchone()
@@ -825,7 +823,7 @@ class BinanceDataLoader:
         #               quote_volume, count, taker_buy_volume, taker_buy_quote_volume
 
         query = f"""
-        SELECT 
+        SELECT
             open_time as start_time,
             close_time as end_time,
             symbol,

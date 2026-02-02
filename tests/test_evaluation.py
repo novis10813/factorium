@@ -40,12 +40,16 @@ def test_factor_evaluation_flow():
 
     # Assertions
     assert isinstance(result, FactorAnalysisResult)
-    assert "mean_ic" in result.ic_summary
-    assert "ic_ir" in result.ic_summary
+    # ic_summary is now always dict[int, dict[str, float]]
+    assert 1 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
+    assert "ic_ir" in result.ic_summary[1]
     assert isinstance(result.ic_series, pd.DataFrame)
     assert isinstance(result.turnover_mean, float)
-    assert isinstance(result.quantile_returns, pd.DataFrame)
-    assert len(result.quantile_returns.columns) == 2  # quantiles=2
+    # quantile_returns is now dict[int, pd.DataFrame]
+    assert isinstance(result.quantile_returns, dict)
+    assert 1 in result.quantile_returns
+    assert len(result.quantile_returns[1].columns) == 2  # quantiles=2
 
     # Check if output directory was created and has files
     assert os.path.exists(output_dir)

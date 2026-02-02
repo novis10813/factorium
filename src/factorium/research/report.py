@@ -4,16 +4,14 @@ Factor analysis and backtest report generation.
 Combines factor analysis and backtest results into comprehensive reports.
 """
 
-from typing import Dict, Any, Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
-    from .session import ResearchSession
     from ..factors.analyzer import FactorAnalysisResult
-import polars as pl
-import pandas as pd
+    from .session import ResearchSession
 
-from ..factors.core import Factor
 from ..backtest.vectorized import BacktestResult
+from ..factors.core import Factor
 
 
 class FactorReport:
@@ -73,14 +71,14 @@ class FactorReport:
     def __init__(
         self,
         factor: Factor,
-        analysis: Union[Dict[str, Any], "FactorAnalysisResult"],
+        analysis: Union[dict[str, Any], "FactorAnalysisResult"],
         backtest: BacktestResult,
     ):
         self.factor = factor
         self.analysis = analysis
         self.backtest = backtest
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """
         Generate summary combining analysis and backtest metrics.
 
@@ -98,7 +96,7 @@ class FactorReport:
             "backtest_metrics": self.backtest.metrics,
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert report to dictionary."""
         if hasattr(self.analysis, "to_dict"):
             analysis_dict = self.analysis.to_dict()
@@ -116,7 +114,7 @@ class FactorReport:
     def __repr__(self) -> str:
         """String representation of report."""
         summary = self.summary()
-        ic = summary["ic_summary"]
+        ic_summary = summary["ic_summary"]
         metrics = summary["backtest_metrics"]
 
         def fmt_float(val: Any, fmt: str) -> str:
@@ -124,11 +122,18 @@ class FactorReport:
                 return f"{val:{fmt}}"
             return "N/A"
 
+        # ic_summary is now dict[int, dict[str, float]], get first period's stats
+        if ic_summary:
+            first_period = next(iter(ic_summary.keys()))
+            ic = ic_summary.get(first_period, {})
+        else:
+            ic = {}
+
         return f"""FactorReport: {summary["factor_name"]}
 IC Summary:
   Mean IC: {fmt_float(ic.get("mean_ic"), ".4f")}
   IC Std: {fmt_float(ic.get("ic_std"), ".4f")}
-  
+
 Backtest Metrics:
   Total Return: {fmt_float(metrics.get("total_return"), ".2%")}
   Annual Return: {fmt_float(metrics.get("annual_return"), ".2%")}

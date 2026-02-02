@@ -2,10 +2,10 @@
 Plotting utilities for FactorAnalyzer.
 """
 
-from typing import Tuple, Dict
-import pandas as pd
-import matplotlib.pyplot as plt
+
 import matplotlib.figure as mpl_figure
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
 class FactorAnalyzerPlotter:
@@ -13,7 +13,7 @@ class FactorAnalyzerPlotter:
     Plotting utility for FactorAnalyzer results.
     """
 
-    def plot_ic_ts(self, ic_data: pd.DataFrame, figsize: Tuple[int, int] = (12, 6)) -> mpl_figure.Figure:
+    def plot_ic_ts(self, ic_data: pd.DataFrame, figsize: tuple[int, int] = (12, 6)) -> mpl_figure.Figure:
         """
         Plot time series of IC.
 
@@ -33,7 +33,7 @@ class FactorAnalyzerPlotter:
         plt.tight_layout()
         return fig
 
-    def plot_ic_hist(self, ic_data: pd.DataFrame, figsize: Tuple[int, int] = (10, 6)) -> mpl_figure.Figure:
+    def plot_ic_hist(self, ic_data: pd.DataFrame, figsize: tuple[int, int] = (10, 6)) -> mpl_figure.Figure:
         """
         Plot histogram of IC.
 
@@ -54,7 +54,7 @@ class FactorAnalyzerPlotter:
         return fig
 
     def plot_quantile_returns(
-        self, quantile_stats: pd.DataFrame, figsize: Tuple[int, int] = (10, 6)
+        self, quantile_stats: pd.DataFrame, figsize: tuple[int, int] = (10, 6)
     ) -> mpl_figure.Figure:
         """
         Plot bar chart of mean returns per quantile.
@@ -79,7 +79,7 @@ class FactorAnalyzerPlotter:
         plt.tight_layout()
         return fig
 
-    def plot_cumulative_returns(self, cum_ret: pd.DataFrame, figsize: Tuple[int, int] = (12, 6)) -> mpl_figure.Figure:
+    def plot_cumulative_returns(self, cum_ret: pd.DataFrame, figsize: tuple[int, int] = (12, 6)) -> mpl_figure.Figure:
         """
         Plot cumulative returns of quantiles.
 
@@ -99,7 +99,7 @@ class FactorAnalyzerPlotter:
         plt.tight_layout()
         return fig
 
-    def plot_ic_decay(self, ic_summary: Dict[int, Dict[str, float]]) -> mpl_figure.Figure:
+    def plot_ic_decay(self, ic_summary: dict[int, dict[str, float]]) -> mpl_figure.Figure:
         """
         Plot IC decay curve across horizons.
 

@@ -1,6 +1,5 @@
 """Performance metrics calculation for backtesting."""
 
-from typing import Dict
 import numpy as np
 import pandas as pd
 
@@ -11,7 +10,7 @@ def calculate_metrics(
     returns: pd.Series,
     risk_free_rate: float = 0.0,
     periods_per_year: float = 365.0 * 24,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     if not MIN_PERIODS_PER_YEAR <= periods_per_year <= MAX_PERIODS_PER_YEAR:
         raise ValueError(
             f"periods_per_year must be between {MIN_PERIODS_PER_YEAR} and {MAX_PERIODS_PER_YEAR}, "
@@ -90,5 +89,5 @@ def calculate_metrics(
         "var_95": var_95,
         "cvar_95": cvar_95,
         "win_rate": float(win_rate),
-        "profit_factor": profit_factor,
+        "profit_factor": float(profit_factor),
     }
