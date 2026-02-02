@@ -383,25 +383,25 @@ class BarAggregator:
             -- Recursive CTE to compute greedy bar assignments (Greedy Packing algorithm)
             greedy AS (
                 -- Base case: first row
-                SELECT 
+                SELECT
                     seq,
                     volume,
                     volume AS running_volume,
                     CAST(0 AS BIGINT) AS bar_id
                 FROM numbered
                 WHERE seq = 1
-                
+
                 UNION ALL
-                
+
                 -- Recursive case: process remaining rows
                 SELECT
                     r.seq,
                     r.volume,
-                    CASE 
+                    CASE
                         WHEN g.running_volume >= {interval_volume} THEN r.volume  -- Reset after threshold
                         ELSE g.running_volume + r.volume                          -- Continue accumulating
                     END AS running_volume,
-                    CASE 
+                    CASE
                         WHEN g.running_volume >= {interval_volume} THEN g.bar_id + 1  -- New bar
                         ELSE g.bar_id                                                  -- Same bar
                     END AS bar_id
@@ -526,25 +526,25 @@ class BarAggregator:
             -- Recursive CTE to compute greedy bar assignments (Greedy Packing algorithm)
             greedy AS (
                 -- Base case: first row
-                SELECT 
+                SELECT
                     seq,
                     dollar_volume,
                     dollar_volume AS running_dollar,
                     CAST(0 AS BIGINT) AS bar_id
                 FROM numbered
                 WHERE seq = 1
-                
+
                 UNION ALL
-                
+
                 -- Recursive case: process remaining rows
                 SELECT
                     r.seq,
                     r.dollar_volume,
-                    CASE 
+                    CASE
                         WHEN g.running_dollar >= {interval_dollar} THEN r.dollar_volume  -- Reset after threshold
                         ELSE g.running_dollar + r.dollar_volume                          -- Continue accumulating
                     END AS running_dollar,
-                    CASE 
+                    CASE
                         WHEN g.running_dollar >= {interval_dollar} THEN g.bar_id + 1  -- New bar
                         ELSE g.bar_id                                                  -- Same bar
                     END AS bar_id

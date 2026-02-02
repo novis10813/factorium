@@ -58,17 +58,17 @@ def csv_to_parquet(
 ) -> Path:
     """
     Convert CSV file to Parquet format in target directory.
-    
+
     Automatically detects if CSV has headers. For headerless Binance CSVs,
     uses predefined column names based on data_type.
-    
+
     Args:
         csv_path: Path to input CSV file
         output_dir: Directory to write Parquet file (will be created if needed)
         compression: Compression codec ('zstd', 'snappy', 'gzip', or None)
         filename: Output filename
         data_type: Binance data type (aggTrades, trades, klines) for headerless CSVs
-        
+
     Returns:
         Path to created Parquet file
     """
@@ -104,15 +104,15 @@ def read_hive_parquet(
 ) -> pd.DataFrame:
     """
     Read Parquet files with Hive partitioning via DuckDB.
-    
+
     Args:
         base_path: Glob pattern to Parquet files (e.g., 'Data/market=*/**/*.parquet')
         columns: Optional list of columns to select
         where: Optional WHERE clause (without 'WHERE' keyword)
-        
+
     Returns:
         DataFrame with query results
-        
+
     Example:
         >>> df = read_hive_parquet(
         ...     'Data/market=futures_um/data_type=klines/**/*.parquet',
@@ -140,7 +140,7 @@ def build_hive_path(
 ) -> Path:
     """
     Build Hive-style partition path.
-    
+
     Args:
         base_path: Base data directory
         market: Market type (futures_cm, futures_um, spot)
@@ -149,7 +149,7 @@ def build_hive_path(
         year: Year
         month: Month (1-12)
         day: Day (1-31)
-        
+
     Returns:
         Path to partition directory
     """
@@ -167,11 +167,11 @@ def build_hive_path(
 def get_market_string(market_type: str, futures_type: str = '') -> str:
     """
     Get combined market string for Hive partition.
-    
+
     Args:
         market_type: 'spot' or 'futures'
         futures_type: 'cm' or 'um' (only for futures)
-        
+
     Returns:
         Market string: 'spot', 'futures_cm', or 'futures_um'
     """

@@ -34,17 +34,17 @@ if not TYPE_CHECKING:
 class FactorExpressionParser:
     """
     Parser for functional-style factor expressions.
-    
+
     Supports:
     - Function calls: ts_delta(close, 20)
     - Variables: close, volume (resolved from context)
     - Numbers: 20, 3.14
     - Binary operators: +, -, *, / (with proper precedence)
     - Parentheses: (expression)
-    
+
     Example:
         >>> parser = FactorExpressionParser()
-        >>> result = parser.parse("ts_delta(close, 20) / ts_shift(close, 20)", 
+        >>> result = parser.parse("ts_delta(close, 20) / ts_shift(close, 20)",
         ...                       context={'close': close_factor})
     """
 
@@ -259,14 +259,14 @@ class FactorExpressionParser:
     def parse(self, expr: str, context: dict[str, "Factor"]) -> "Factor":
         """
         Parse and evaluate a factor expression.
-        
+
         Args:
             expr: Expression string (e.g., "ts_delta(close, 20) / ts_shift(close, 20)")
             context: Dictionary mapping variable names to Factor objects
-            
+
         Returns:
             Factor: The resulting factor from the expression
-            
+
         Raises:
             ParseException: If the expression cannot be parsed
             ValueError: If there's an error in evaluation (undefined variable, etc.)

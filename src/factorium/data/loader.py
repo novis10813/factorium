@@ -24,7 +24,7 @@ def _run_async(coro):
     This is necessary for Jupyter notebooks which already have a running event loop.
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         # No running loop, use asyncio.run()
         return asyncio.run(coro)
@@ -789,8 +789,8 @@ class BinanceDataLoader:
             self.storage.configure_duckdb_s3(con)
 
         sample_query = f"""
-            SELECT open_time 
-            FROM read_parquet('{parquet_pattern}', hive_partitioning=true) 
+            SELECT open_time
+            FROM read_parquet('{parquet_pattern}', hive_partitioning=true)
             LIMIT 1
         """
         sample_result = con.execute(sample_query).fetchone()
@@ -825,7 +825,7 @@ class BinanceDataLoader:
         #               quote_volume, count, taker_buy_volume, taker_buy_quote_volume
 
         query = f"""
-        SELECT 
+        SELECT
             open_time as start_time,
             close_time as end_time,
             symbol,

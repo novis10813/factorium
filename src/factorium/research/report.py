@@ -126,7 +126,7 @@ class FactorReport:
 IC Summary:
   Mean IC: {fmt_float(ic.get("mean_ic"), ".4f")}
   IC Std: {fmt_float(ic.get("ic_std"), ".4f")}
-  
+
 Backtest Metrics:
   Total Return: {fmt_float(metrics.get("total_return"), ".2%")}
   Annual Return: {fmt_float(metrics.get("annual_return"), ".2%")}
