@@ -8,6 +8,8 @@ import polars as pl
 
 from ..constants import (
     EPSILON,
+    MAX_PERIODS_PER_YEAR,
+    MIN_PERIODS_PER_YEAR,
     SECONDS_PER_YEAR,
 )
 

@@ -56,8 +56,11 @@ class FactorExpressionParser:
         # Numbers (integers and floats)
         integer = Combine(Optional("-") + Word(nums))
         float_number = Combine(
-            Optional("-") + Word(nums) + "." + Word(nums) +
-            Optional(one_of("e E") + Optional(one_of("+ -")) + Word(nums))
+            Optional("-")
+            + Word(nums)
+            + "."
+            + Word(nums)
+            + Optional(one_of("e E") + Optional(one_of("+ -")) + Word(nums))
         )
         number = float_number | integer
 
@@ -72,10 +75,10 @@ class FactorExpressionParser:
 
         # Function call definition
         function_call <<= Group(
-            identifier.set_results_name("func_name") +
-            Suppress("(") +
-            Optional(arg_list).set_results_name("args") +
-            Suppress(")")
+            identifier.set_results_name("func_name")
+            + Suppress("(")
+            + Optional(arg_list).set_results_name("args")
+            + Suppress(")")
         )
 
         # Variable or number - wrap in Group to isolate names
@@ -106,15 +109,15 @@ class FactorExpressionParser:
         res = matched[0]
         for i in range(1, len(matched), 2):
             op = matched[i]
-            right = matched[i+1]
+            right = matched[i + 1]
             res = {"type": "binary_op", "op": op, "left": res, "right": right}
         return res
-
 
     def _evaluate(self, node: Any, context: dict[str, "Factor"]) -> Union["Factor", float, int]:
         """Evaluate a parsed expression node."""
         # Handle Factor objects directly
         from .core import Factor
+
         if isinstance(node, Factor):
             return node
 
@@ -122,7 +125,7 @@ class FactorExpressionParser:
         if hasattr(node, "as_dict"):
             try:
                 node_dict = node.as_dict()
-            except:
+            except Exception:
                 node_dict = {}
 
             # If it's empty but has content, it might be a list-like ParseResults
@@ -136,7 +139,9 @@ class FactorExpressionParser:
                 op = node_dict["op"]
                 left = self._evaluate(node_dict["left"], context)
                 right = self._evaluate(node_dict["right"], context)
-                print(f"DEBUG: binary_op {op}, left: {getattr(left, 'name', left)}, right: {getattr(right, 'name', right)}")
+                print(
+                    f"DEBUG: binary_op {op}, left: {getattr(left, 'name', left)}, right: {getattr(right, 'name', right)}"
+                )
 
                 if op == "+":
                     return operators.add(left, right)
@@ -211,7 +216,11 @@ class FactorExpressionParser:
                 if not hasattr(operators, func_name):
                     raise ValueError(f"Unknown function: {func_name}")
                 op_func = getattr(operators, func_name)
-                eval_args = [self._evaluate(arg, context) for arg in args_list] if isinstance(args_list, list) else [self._evaluate(args_list, context)]
+                eval_args = (
+                    [self._evaluate(arg, context) for arg in args_list]
+                    if isinstance(args_list, list)
+                    else [self._evaluate(args_list, context)]
+                )
                 return op_func(*eval_args)
 
             if "variable" in node:
@@ -276,10 +285,10 @@ class FactorExpressionParser:
             result = self._evaluate(parsed, context)
 
             from .core import Factor
+
             if not isinstance(result, Factor):
                 raise ValueError(f"Expression did not evaluate to a Factor, got {type(result)}")
 
             return result
         except ParseException as e:
             raise ValueError(f"Failed to parse expression '{expr}': {e}") from e
-

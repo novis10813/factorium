@@ -14,6 +14,7 @@ import pandas as pd
 import polars as pl
 
 if TYPE_CHECKING:
+    from .bar import BaseBar
     from .data.metadata import AggBarMetadata
     from .factors.core import Factor
 

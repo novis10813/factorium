@@ -240,9 +240,9 @@ class PolarsEngine:
 
             try:
                 # Solve least squares: y = [x 1] * [beta alpha]^T
-                A = np.vstack([x, np.ones(len(x))]).T
-                beta_alpha, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
-                residuals = y - A @ beta_alpha
+                design_matrix = np.vstack([x, np.ones(len(x))]).T
+                beta_alpha, _, _, _ = np.linalg.lstsq(design_matrix, y, rcond=None)
+                residuals = y - design_matrix @ beta_alpha
                 batch_pd["residual"] = residuals
             except Exception:
                 batch_pd["residual"] = np.nan

@@ -11,6 +11,7 @@ Example:
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 import polars as pl
@@ -19,6 +20,9 @@ from ..aggbar import AggBar
 from ..backtest.vectorized import BacktestResult, VectorizedBacktester
 from ..factors.core import Factor
 from ..factors.parser import FactorExpressionParser
+
+if TYPE_CHECKING:
+    from ..factors.analyzer import FactorAnalysisResult
 
 
 class ResearchSession:
