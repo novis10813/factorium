@@ -558,7 +558,10 @@ dev = [
     { name = "freezegun" },
     { name = "mkdocs" },
     { name = "mkdocs-material" },
+    { name = "mypy" },
     { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -588,7 +591,10 @@ dev = [
     { name = "freezegun", specifier = ">=1.5.5" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.7.1" },
+    { name = "mypy", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
 ]
 
 [[package]]
