@@ -214,7 +214,8 @@ class ResearchSession:
         backtest = self.backtest(factor)
 
         # Format report
-        ic_summary = analysis.ic_summary
+        # Type narrowing: quick_report uses single period, so ic_summary is dict[str, float]
+        ic_summary: dict[str, float] = analysis.ic_summary  # type: ignore[assignment]
         metrics = backtest.metrics
 
         report = f"""

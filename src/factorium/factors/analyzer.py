@@ -63,7 +63,8 @@ class FactorAnalysisResult:
     def __repr__(self) -> str:
         if isinstance(self.periods, int):
             # 單一 horizon: backward compatible format
-            ic = self.ic_summary
+            # Type narrowing: when periods is int, ic_summary is dict[str, float]
+            ic: dict[str, float] = self.ic_summary  # type: ignore[assignment]
             return f"""FactorAnalysisResult: {self.factor_name}
   Periods: {self.periods}, Quantiles: {self.quantiles}
   Mean IC: {ic.get("mean_ic", 0):.4f}
@@ -73,10 +74,12 @@ class FactorAnalysisResult:
 """
         else:
             # Multi-horizon: show all periods
+            # Type narrowing: when periods is list, ic_summary is dict[int, dict[str, float]]
+            ic_multi: dict[int, dict[str, float]] = self.ic_summary  # type: ignore[assignment]
             lines = [f"FactorAnalysisResult: {self.factor_name}"]
             lines.append(f"  Periods: {self.periods}, Quantiles: {self.quantiles}")
             for p in self.periods:
-                ic = self.ic_summary.get(p, {})
+                ic = ic_multi.get(p, {})
                 lines.append(f"  Period {p}: IC={ic.get('mean_ic', 0):.4f}, IR={ic.get('ic_ir', 0):.4f}")
             lines.append(f"  Turnover: {self.turnover_mean:.4f}")
             return "\n".join(lines) + "\n"

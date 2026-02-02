@@ -171,7 +171,7 @@ class PolarsEngine:
         upper_bound = pl.col(value_col).quantile(1 - limits).over(time_col)
 
         # Clip values between bounds
-        winsorize_expr = pl.col(value_col).clip(min_bound=lower_bound, max_bound=upper_bound)
+        winsorize_expr = pl.col(value_col).clip(lower_bound=lower_bound, upper_bound=upper_bound)
 
         return df.with_columns(pl.when(has_nan).then(None).otherwise(winsorize_expr).alias(value_col))
 
@@ -249,8 +249,8 @@ class PolarsEngine:
 
             return batch_pd
 
-        # Apply least-squares per time period
-        result = df.map_batches(least_squares_batch, schema={**df.schema, "residual": pl.Float64})
+        # Apply least-squares per time period using group_by + map_groups
+        result = df.group_by("end_time", maintain_order=True).map_groups(least_squares_batch)
 
         # Select and rename back to factor
         result = result.select(["start_time", "end_time", "symbol", "residual"]).rename({"residual": value_col})

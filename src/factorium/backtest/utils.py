@@ -13,6 +13,14 @@ from ..constants import (
     SECONDS_PER_YEAR,
 )
 
+# Re-export constants for backward compatibility
+__all__ = [
+    "MAX_PERIODS_PER_YEAR",
+    "MIN_PERIODS_PER_YEAR",
+    "POSITION_EPSILON",
+    "SECONDS_PER_YEAR",
+]
+
 # Backward compatibility alias
 POSITION_EPSILON = EPSILON
 
