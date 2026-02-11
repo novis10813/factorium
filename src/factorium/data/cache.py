@@ -4,8 +4,9 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-
 import polars as pl
+
+from ..storage import StorageBackend, LocalStorageBackend
 
 
 class BarCache:
@@ -22,14 +23,41 @@ class BarCache:
     Each day is stored as a separate Parquet file for efficient partial updates.
     """
 
-    def __init__(self, cache_dir: Path = Path("./Data/.cache")):
+    def __init__(
+        self,
+        storage: "StorageBackend | None" = None,
+        cache_prefix: str = ".cache",
+        *,
+        cache_dir: "Path | str | None" = None,  # Deprecated, for backward compatibility
+    ):
         """Initialize cache.
 
         Args:
-            cache_dir: Directory for cache files
+            storage: StorageBackend instance. If None, creates LocalStorageBackend.
+            cache_prefix: Prefix path for cache files within storage.
+            cache_dir: DEPRECATED. Use storage parameter instead.
         """
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        if cache_dir is not None:
+            # Backward compatibility
+            import warnings
+
+            warnings.warn(
+                "cache_dir is deprecated, use storage parameter instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.storage = LocalStorageBackend(str(cache_dir))
+            self.cache_prefix = ""
+            self.cache_dir = Path(cache_dir)  # for backward compatibility
+        elif storage is None:
+            self.storage = LocalStorageBackend("./Data")
+            self.cache_prefix = cache_prefix
+        else:
+            self.storage = storage
+            self.cache_prefix = cache_prefix
+
+        if self.cache_prefix:
+            self.storage.makedirs(self.cache_prefix)
 
     def _build_cache_key(
         self,
@@ -58,11 +86,13 @@ class BarCache:
         data_type: str,
         market_type: str,
         date: datetime,
-    ) -> Path:
+    ) -> str:
         """Get cache file path for a specific date."""
         cache_key = self._build_cache_key(exchange, symbols, interval_ms, data_type, market_type)
         date_str = date.strftime("%Y-%m-%d")
-        return self.cache_dir / cache_key / f"{date_str}.parquet"
+        if self.cache_prefix:
+            return f"{self.cache_prefix}/{cache_key}/{date_str}.parquet"
+        return f"{cache_key}/{date_str}.parquet"
 
     def get(
         self,
@@ -80,8 +110,8 @@ class BarCache:
         """
         cache_path = self._get_cache_path(exchange, symbols, interval_ms, data_type, market_type, date)
 
-        if cache_path.exists():
-            return pl.read_parquet(cache_path)
+        if self.storage.exists(cache_path):
+            return self.storage.read_parquet(cache_path)
         return None
 
     def get_range(
@@ -122,15 +152,16 @@ class BarCache:
         data_type: str,
         market_type: str,
         date: datetime,
-    ) -> Path:
+    ) -> str:
         """Store data in cache for a single date.
 
         Returns:
             Path to cached file
         """
         cache_path = self._get_cache_path(exchange, symbols, interval_ms, data_type, market_type, date)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(cache_path)
+        parent_dir = "/".join(cache_path.split("/")[:-1])
+        self.storage.makedirs(parent_dir)
+        self.storage.write_parquet(df, cache_path)
         return cache_path
 
     def clear(self) -> int:
@@ -140,10 +171,8 @@ class BarCache:
             Number of files deleted
         """
         count = 0
-        for cache_subdir in self.cache_dir.iterdir():
-            if cache_subdir.is_dir():
-                for f in cache_subdir.glob("*.parquet"):
-                    f.unlink()
-                    count += 1
-                cache_subdir.rmdir()
+        pattern = f"{self.cache_prefix}/*/*.parquet" if self.cache_prefix else "*/*.parquet"
+        for file_path in self.storage.glob(pattern):
+            self.storage.delete(file_path)
+            count += 1
         return count
