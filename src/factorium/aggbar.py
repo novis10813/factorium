@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from .bar import BaseBar
     from .data.metadata import AggBarMetadata
     from .factors.core import Factor
-    from .universe.checklist import Checklist
-    from .universe.universe import Universe
 
 
 class AggBar:
@@ -212,22 +210,6 @@ class AggBar:
             cond = cond & (self._data["end_time"] <= end_ts)
 
         return AggBar(self._data.filter(cond))
-
-    def with_mask(
-        self,
-        name: str,
-        mask_source: "Universe | Checklist",
-        metadata: dict,
-        tags: dict[str, list[str]] | None = None,
-    ) -> "AggBar":
-        """Add a boolean mask column and return a new AggBar."""
-        protected_cols = {"start_time", "end_time", "symbol", "open", "high", "low", "close", "volume"}
-        if name in protected_cols:
-            raise ValueError(f"Cannot use protected column name: {name}")
-
-        mask_expr = mask_source.apply(self._data.lazy(), metadata, tags)
-        new_data = self._data.with_columns(mask_expr.alias(name))
-        return AggBar(new_data, metadata=self._metadata)
 
     @property
     def cols(self) -> list[str]:

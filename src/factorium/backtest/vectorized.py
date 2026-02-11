@@ -59,7 +59,6 @@ class VectorizedBacktester:
         neutralization: Literal["market", "none"] = "market",
         frequency: str = "1h",
         constraints: list | None = None,
-        mask: str | None = None,
     ):
         """
         Initialize the vectorized backtester.
@@ -88,21 +87,16 @@ class VectorizedBacktester:
         self.periods_per_year = frequency_to_periods_per_year(frequency)
         self._periods_per_year = self.periods_per_year  # Alias for backward compatibility
         self.constraints = constraints or []
-        self._mask = mask
 
         # Convert inputs to Polars DataFrames
         if isinstance(prices, AggBar):
             if entry_price not in prices.cols:
                 raise ValueError(f"entry_price '{entry_price}' not found in prices")
-            if mask is not None and mask not in prices.cols:
-                raise ValueError(f"mask '{mask}' not found in prices")
             self.prices_df = prices.to_polars()
         else:
             self.prices_df = prices
             if entry_price not in prices.columns:
                 raise ValueError(f"entry_price '{entry_price}' not found in prices")
-            if mask is not None and mask not in prices.columns:
-                raise ValueError(f"mask '{mask}' not found in prices")
 
         if isinstance(signal, Factor):
             self.signal_df = signal.lazy.collect()
@@ -151,10 +145,7 @@ class VectorizedBacktester:
     def _prepare_data(self) -> pl.DataFrame:
         """Merge prices and signals, shift signals to avoid lookahead bias."""
         # Get the entry price column
-        price_cols = ["end_time", "symbol", self.entry_price]
-        if self._mask is not None:
-            price_cols.append(self._mask)
-        prices_df = self.prices_df.select(price_cols).rename({self.entry_price: "price"})
+        prices_df = self.prices_df.select(["end_time", "symbol", self.entry_price]).rename({self.entry_price: "price"})
 
         # Prepare signal data
         signal_df = self.signal_df.select(["end_time", "symbol", "factor"]).rename({"factor": "signal"})
@@ -172,32 +163,17 @@ class VectorizedBacktester:
 
     def _calculate_weights(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate portfolio weights (cross-sectional)."""
-        signal_col = "prev_signal"
-        if self._mask is not None:
-            signal_col = "_masked_signal"
-            df = df.with_columns(
-                pl.when(pl.col(self._mask).fill_null(False))
-                .then(pl.col("prev_signal"))
-                .otherwise(None)
-                .alias(signal_col)
-            )
-
         if self.neutralization == "market":
             # Market neutral: (signal - mean) / sum(|signal - mean|)
             from .utils import neutralize_weights_polars
 
-            df = neutralize_weights_polars(df, signal_col, "end_time")
+            df = neutralize_weights_polars(df, "prev_signal", "end_time")
         else:  # long-only
             # Normalize positive signals to sum to 1
-            positive_only = pl.when(pl.col(signal_col) > 0).then(pl.col(signal_col)).otherwise(0.0)
+            positive_only = pl.when(pl.col("prev_signal") > 0).then(pl.col("prev_signal")).otherwise(0.0)
             df = df.with_columns(
                 [(positive_only / positive_only.sum().over("end_time")).fill_nan(0.0).fill_null(0.0).alias("weight")]
             )
-
-        if self._mask is not None:
-            df = df.with_columns(
-                pl.when(pl.col(self._mask).fill_null(False)).then(pl.col("weight")).otherwise(0.0).alias("weight")
-            ).drop("_masked_signal")
 
         # Apply constraints
         for constraint in self.constraints:
