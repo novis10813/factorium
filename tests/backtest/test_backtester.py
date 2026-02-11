@@ -329,6 +329,7 @@ class TestVectorizedBacktesterIntegration:
         df = pl.DataFrame(rows)
         return AggBar(df)
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_vectorized_vs_original_equity_curve(self, sample_data):
         """VectorizedBacktester should produce similar equity curve to Backtester."""
         close = sample_data["close"]
@@ -526,6 +527,7 @@ class TestLegacyBacktester:
         df = pd.DataFrame(rows)
         return AggBar(df)
 
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     def test_legacy_basic_backtest(self, sample_data):
         close = sample_data["close"]
         signal = close.cs_rank()
