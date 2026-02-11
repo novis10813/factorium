@@ -43,7 +43,16 @@ def calculate_metrics(
     n_periods = len(returns)
     years = n_periods / periods_per_year
 
-    annual_return = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0.0
+    if years <= 0:
+        annual_return = 0.0
+    elif total_return <= -1.0:
+        annual_return = -1.0
+    else:
+        log_term = np.log1p(total_return) / years
+        if log_term > 700:
+            annual_return = np.inf
+        else:
+            annual_return = np.expm1(log_term)
     annual_volatility = float(returns.std() * np.sqrt(periods_per_year))
 
     excess_return = annual_return - risk_free_rate

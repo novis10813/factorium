@@ -56,7 +56,7 @@ def sample_trades_df():
 @pytest.fixture
 def loader():
     """Create a BinanceDataLoader instance."""
-    return BinanceDataLoader(base_path="./test_data")
+    return BinanceDataLoader(path="./test_data")
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def temp_data_dir():
 @pytest.fixture
 def loader_with_temp_dir(temp_data_dir):
     """Create a BinanceDataLoader with temporary directory."""
-    return BinanceDataLoader(base_path=str(temp_data_dir))
+    return BinanceDataLoader(path=str(temp_data_dir))
 
 
 def create_mock_df(symbol: str, seed: int = 42) -> pd.DataFrame:
@@ -205,7 +205,7 @@ class TestCheckAllFilesExist:
 
     def test_all_files_exist(self, temp_data_dir):
         """Test when all required files exist."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
 
         # Create parquet files for 3 days
         for i in range(3):
@@ -225,7 +225,7 @@ class TestCheckAllFilesExist:
 
     def test_some_files_missing(self, temp_data_dir):
         """Test when some files are missing."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
 
         # Create files for day 1 and 3, skip day 2
         create_parquet_file(temp_data_dir, "futures_um", "aggTrades", "BTCUSDT", datetime(2024, 1, 1))
@@ -244,7 +244,7 @@ class TestCheckAllFilesExist:
 
     def test_no_files_exist(self, temp_data_dir):
         """Test when no files exist."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
 
         result = loader._check_all_files_exist(
             symbol="BTCUSDT",
@@ -259,7 +259,7 @@ class TestCheckAllFilesExist:
 
     def test_checks_correct_path_structure(self, temp_data_dir):
         """Test that check uses correct Hive partition path."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
 
         # Create file with correct structure
         expected_path = (
@@ -292,7 +292,7 @@ class TestCheckAllFilesExist:
 
     def test_spot_market_path(self, temp_data_dir):
         """Test file check for spot market (different path)."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
 
         # Create file for spot market
         expected_path = (
@@ -588,18 +588,18 @@ class TestLoaderInitialization:
 
     def test_custom_base_path(self, temp_data_dir):
         """Test custom base_path is set correctly."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
         assert loader.base_path == temp_data_dir
 
     def test_downloader_is_created(self, temp_data_dir):
         """Test that BinanceDataDownloader is created."""
-        loader = BinanceDataLoader(base_path=str(temp_data_dir))
+        loader = BinanceDataLoader(path=str(temp_data_dir))
         assert loader.downloader is not None
 
     def test_download_settings_passed_to_downloader(self, temp_data_dir):
         """Test that download settings are passed to downloader."""
         loader = BinanceDataLoader(
-            base_path=str(temp_data_dir), max_concurrent_downloads=10, retry_attempts=5, retry_delay=2
+            path=str(temp_data_dir), max_concurrent_downloads=10, retry_attempts=5, retry_delay=2
         )
 
         assert loader.downloader.max_concurrent_downloads == 10
