@@ -1,17 +1,16 @@
 """Vectorized backtester using Polars for performance."""
 
 from dataclasses import dataclass
-from typing import Any, Literal
-
+from typing import Optional, Literal, Dict, Any, Union
 import numpy as np
 import pandas as pd
 import polars as pl
 
 from ..aggbar import AggBar
-from ..constants import EPSILON
 from ..factors.core import Factor
-from .metrics import calculate_metrics
+from ..constants import EPSILON
 from .utils import frequency_to_periods_per_year
+from .metrics import calculate_metrics
 
 
 @dataclass
@@ -20,7 +19,7 @@ class BacktestResult:
 
     equity_curve: pl.DataFrame  # columns: [end_time, total_value]
     returns: pl.DataFrame  # columns: [end_time, return]
-    metrics: dict[str, float]
+    metrics: Dict[str, float]
     trades: pl.DataFrame  # columns: [end_time, symbol, qty, price, cost]
     portfolio_history: pl.DataFrame  # columns: [end_time, cash, market_value, total_value]
 
@@ -41,7 +40,7 @@ class BacktestResultPandas:
 
     equity_curve: pd.DataFrame
     returns: pd.DataFrame
-    metrics: dict[str, float]
+    metrics: Dict[str, float]
     trades: pd.DataFrame
     portfolio_history: pd.DataFrame
 
@@ -51,14 +50,14 @@ class VectorizedBacktester:
 
     def __init__(
         self,
-        prices: AggBar | pl.DataFrame,
-        signal: Factor | pl.DataFrame,
+        prices: Union[AggBar, pl.DataFrame],
+        signal: Union[Factor, pl.DataFrame],
         entry_price: str = "close",
-        transaction_cost: float | tuple[float, float] = 0.0003,
+        transaction_cost: Union[float, tuple[float, float]] = 0.0003,
         initial_capital: float = 10000.0,
         neutralization: Literal["market", "none"] = "market",
         frequency: str = "1h",
-        constraints: list | None = None,
+        constraints: Optional[list] = None,
     ):
         """
         Initialize the vectorized backtester.
@@ -103,7 +102,7 @@ class VectorizedBacktester:
         else:
             self.signal_df = signal
 
-        self._result: BacktestResult | None = None
+        self._result: Optional[BacktestResult] = None
 
     def run(self) -> BacktestResult:
         """
@@ -128,7 +127,7 @@ class VectorizedBacktester:
         self._result = self._build_result(portfolio_history, combined)
         return self._result
 
-    def summary(self) -> dict[str, Any]:
+    def summary(self) -> Dict[str, Any]:
         """Return a summary of backtest results."""
         if self._result is None:
             raise RuntimeError("Must call run() before summary()")
@@ -249,7 +248,7 @@ class VectorizedBacktester:
 
         return equity.select(["end_time", "cash", "market_value", "total_value"])
 
-    def _calculate_metrics(self, equity_history: pl.DataFrame) -> dict[str, float]:
+    def _calculate_metrics(self, equity_history: pl.DataFrame) -> Dict[str, float]:
         """Calculate performance metrics."""
         # Convert to pandas for metrics calculation
         equity_pd = equity_history.to_pandas()

@@ -28,7 +28,6 @@
 *   **一鍵分析**: `analyze(price_col="close", periods=1) -> FactorAnalysisResult`
     *   自動呼叫 `prepare_data()`、`calculate_ic()`、`calculate_ic_summary()`、`calculate_quantile_returns()` 等方法。
     *   回傳結構化結果物件 `FactorAnalysisResult`，方便後續串接報告或序列化。
-    *   支援 Multi-Horizon 分析：傳入 `periods=[1, 5, 20]` 可一次計算多個 horizon 的 IC，呈現 IC decay。
 
 ### 2.2 繪圖類別 `FactorAnalyzerPlotter`
 位於 `src/factorium/factors/plotting_analyzer.py`。
@@ -50,28 +49,16 @@ result: FactorAnalysisResult = analyzer.analyze(price_col="close", periods=1)
 主要欄位：
 
 - `factor_name: str`：因子名稱。
-- `periods: Union[int, List[int]]`：分析使用的持有期（forward return horizon）。
-    - 單一 horizon（`int`）：傳統模式，各欄位為單一值或 DataFrame。
-    - 多 horizon（`List[int]`）：Multi-Horizon 模式，呈現 IC decay，各欄位為 dict 結構。
+- `periods: int`：分析使用的持有期（forward return horizon）。
 - `quantiles: int`：使用的分位數數量。
-- `ic_series: pd.DataFrame`：IC 時間序列（index 為 `start_time`，columns 為 `period_{n}`）。
-- `ic_summary`：IC 摘要統計。
-    - 單一 horizon：`dict[str, float]`，包含 `mean_ic`、`ic_std`、`ic_ir`、`t-stat`。
-    - 多 horizon：`dict[int, dict[str, float]]`，以 period 為 key。
-- `turnover_series: pd.Series`：因子 turnover 時間序列（index 為 `start_time`，值為 `1 - rank_autocorrelation`）。
-- `turnover_mean: float`：turnover 的平均值。
-- `quantile_returns`：分層收益。
-    - 單一 horizon：`pd.DataFrame`（MultiIndex: `start_time`, `quantile`）。
-    - 多 horizon：`dict[int, pd.DataFrame]`，以 period 為 key。
-- `cumulative_returns`：各分層累積收益（若計算成功）。
-    - 單一 horizon：`pd.DataFrame | None`。
-    - 多 horizon：`dict[int, pd.DataFrame] | None`。
+- `ic_series: pd.DataFrame`：IC 時間序列（index 為 `start_time`）。
+- `ic_summary: dict`：IC 摘要統計，包含 `mean_ic`、`ic_std`、`ic_ir`、`t-stat`。
+- `quantile_returns: pd.DataFrame`：分層收益（MultiIndex: `start_time`, `quantile`）。
+- `cumulative_returns: Optional[pd.DataFrame]`：各分層累積收益（若計算成功）。
 
 同時提供：
 
 - `to_dict()`：轉換為 `dict`，方便序列化或與舊版 API 相容。
-- `save(output_dir: str)`：保存完整實驗結果到指定目錄（見下方說明）。
-- `__repr__()`：顯示關鍵摘要（Mean IC, IC IR, Turnover）。
 
 ## 3. 功能詳解
 
@@ -83,92 +70,18 @@ result: FactorAnalysisResult = analyzer.analyze(price_col="close", periods=1)
 *   **摘要**: `calculate_ic_summary()` 提供 Mean IC, IC Std, IC IR (Mean/Std), t-stat 等統計數據。
 
 ### 3.2 分層收益分析 (Quantile Analysis)
-*   **方法**: `calculate_quantile_returns(quantiles=5, period=1)`
-*   **邏輯**: 每一期將股票依因子值分為 N 組 (Quantiles)，使用 **per-day cross-sectional** 分層策略。
+*   **方法**: `calculate_quantile_returns(quantiles=5)`
+*   **邏輯**: 每一期將股票依因子值分為 N 組 (Quantiles)。
 *   **指標**:
     *   平均收益 (Mean Return): 各組的平均未來收益。
     *   累積收益 (Cumulative Return): 各組收益的複利累積曲線。
     *   多空對沖 (Long-Short): Top Quantile - Bottom Quantile 的收益曲線。
-*   **穩健性**: 使用 Polars rank-based quantile 分配，處理因子值重複過多的情況。
+*   **穩健性**: 使用 `pd.qcut(duplicates='drop')` 處理因子值重複過多的情況。
 
-### 3.3 Turnover 分析
-*   **方法**: `calculate_turnover()`
-*   **邏輯**: 計算因子 turnover（換手率），使用 rank autocorrelation 方法。
-    *   對每個 `start_time`，計算 cross-sectional rank。
-    *   計算當期 rank 與前一期 rank 的相關係數（rank autocorrelation）。
-    *   `turnover = 1 - rank_autocorrelation`。
-*   **用途**: 評估因子的穩定性，turnover 越低表示因子排名變化越小，交易成本越低。
-
-### 3.4 繪圖 (Plotting)
+### 3.3 繪圖 (Plotting)
 *   `plot_ic(period, plot_type='ts'|'hist')`: 繪製 IC 走勢或分佈。
 *   `plot_quantile_returns(period)`: 繪製各分層的平均收益。
 *   `plot_cumulative_returns(period, long_short=True)`: 繪製分層累積收益曲線。
-*   `plot_ic_decay(periods=[1, 5, 20])`: 繪製 Multi-Horizon 的 IC decay 曲線（Mean IC 和 IC IR）。
-
-### 3.5 實驗結果保存 (`FactorAnalysisResult.save()`)
-
-`FactorAnalysisResult.save(output_dir)` 方法可以將完整的分析結果保存到指定目錄，自動創建時間戳子目錄並輸出所有 CSV 檔案與圖表。
-
-**輸出結構**：
-
-```
-{output_dir}/
-└── YYYYMMDD_HHMMSS_{factor_name}/
-    ├── config.json               # 實驗設定與 metadata
-    ├── ic_series.csv             # IC 時間序列
-    ├── ic_summary.csv            # IC 統計摘要
-    ├── turnover.csv              # Turnover 時間序列
-    ├── quantile_returns.csv      # 分層收益（單一 horizon）
-    ├── cumulative_returns.csv    # 累積收益（單一 horizon，若可用）
-    └── plots/
-        ├── ic_timeseries.png     # IC 時間序列圖
-        ├── ic_distribution.png   # IC 分佈圖
-        ├── quantile_returns.png  # 分層收益圖（單一 horizon）
-        └── cumulative_returns.png # 累積收益圖（若可用）
-```
-
-**Multi-Horizon 輸出結構**（當 `periods=[1, 5, 20]` 時）：
-
-```
-{output_dir}/
-└── YYYYMMDD_HHMMSS_{factor_name}/
-    ├── config.json
-    ├── ic_series.csv             # 包含 period_1, period_5, period_20 columns
-    ├── ic_summary.csv            # 每行為一個 period
-    ├── turnover.csv
-    ├── quantile_returns_period_1.csv   # 每個 period 獨立檔案
-    ├── quantile_returns_period_5.csv
-    ├── quantile_returns_period_20.csv
-    ├── cumulative_returns_period_1.csv
-    ├── cumulative_returns_period_5.csv
-    ├── cumulative_returns_period_20.csv
-    └── plots/
-        ├── ic_timeseries.png
-        ├── ic_distribution.png
-        ├── ic_decay.png              # IC decay 曲線（僅 multi-horizon）
-        ├── quantile_returns_period_1.png
-        ├── quantile_returns_period_5.png
-        ├── quantile_returns_period_20.png
-        ├── cumulative_returns_period_1.png
-        ├── cumulative_returns_period_5.png
-        └── cumulative_returns_period_20.png
-```
-
-**config.json 範例**：
-
-```json
-{
-  "factor_name": "momentum_20",
-  "periods": 1,
-  "quantiles": 5,
-  "created_at": "2026-01-29T18:30:45.123456",
-  "data_range": {
-    "start": "2023-01-01",
-    "end": "2024-01-15",
-    "n_observations": 12500
-  }
-}
-```
 
 ## 4. 完整使用範例
 
@@ -202,29 +115,18 @@ analyzer = FactorAnalyzer(
 # 4. 一鍵分析（會自動呼叫 prepare_data）
 result = analyzer.analyze(price_col="close", periods=1)
 print(result.ic_summary)
-print(f"Turnover: {result.turnover_mean:.4f}")
 
-# 4b. Multi-Horizon 分析（一次計算多個 horizon 的 IC decay）
-result_multi = analyzer.analyze(price_col="close", periods=[1, 5, 20])
-print(result_multi.ic_summary)  # {1: {"mean_ic": ...}, 5: {...}, 20: {...}}
-# IC decay 會隨著 horizon 增加而下降，這是因子預測能力衰退的正常現象
-
-# 5. 保存完整實驗結果
-result.save("./experiments")
-
-# 6. 若需更細緻控制，可手動操作：
+# 5. 若需更細緻控制，可手動操作：
 analyzer.prepare_data(periods=[1, 5, 10], price_col="close")
 ic = analyzer.calculate_ic(method="rank")
 ic_summary = analyzer.calculate_ic_summary(method="rank")
-turnover_series = analyzer.calculate_turnover()  # 新增：計算 turnover
 quantile_returns = analyzer.calculate_quantile_returns(quantiles=5, period=1)
 cumulative_returns = analyzer.calculate_cumulative_returns(quantiles=5, period=1, long_short=True)
 
-# 7. 繪製圖表
+# 6. 繪製圖表
 analyzer.plot_ic(period=1, method="rank", plot_type="ts")
 analyzer.plot_quantile_returns(quantiles=5, period=1)
 analyzer.plot_cumulative_returns(quantiles=5, period=1, long_short=True)
-analyzer.plot_ic_decay(periods=[1, 5, 20])  # 繪製 IC decay 曲線
 ```
 
 ## 5. 實作細節與安全性

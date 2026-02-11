@@ -4,6 +4,7 @@ Multi-factor composition support.
 Allows combining multiple factors using weighted combinations.
 """
 
+from typing import List, Dict, Optional
 import polars as pl
 
 from .core import Factor
@@ -27,8 +28,8 @@ class CompositeFactor:
 
     def __init__(
         self,
-        factors: list[Factor],
-        weights: list[float] | None = None,
+        factors: List[Factor],
+        weights: Optional[List[float]] = None,
         name: str = "composite",
     ):
         if len(factors) == 0:
@@ -45,7 +46,7 @@ class CompositeFactor:
         self.name = name
 
     @classmethod
-    def from_equal_weights(cls, factors: list[Factor], name: str = "composite") -> "CompositeFactor":
+    def from_equal_weights(cls, factors: List[Factor], name: str = "composite") -> "CompositeFactor":
         """
         Create composite with equal weights.
 
@@ -59,7 +60,7 @@ class CompositeFactor:
         return cls(factors, weights=None, name=name)
 
     @classmethod
-    def from_weights(cls, factors: list[Factor], weights: list[float], name: str = "composite") -> "CompositeFactor":
+    def from_weights(cls, factors: List[Factor], weights: List[float], name: str = "composite") -> "CompositeFactor":
         """
         Create composite with custom weights.
 
@@ -79,7 +80,7 @@ class CompositeFactor:
         return cls(factors, weights=weights, name=name)
 
     @classmethod
-    def from_zscore(cls, factors: list[Factor], name: str = "composite_zscore") -> "CompositeFactor":
+    def from_zscore(cls, factors: List[Factor], name: str = "composite_zscore") -> "CompositeFactor":
         """
         Create composite by standardizing factors first (z-score).
 
@@ -93,6 +94,7 @@ class CompositeFactor:
         Returns:
             CompositeFactor with z-score normalized factors
         """
+        import numpy as np
 
         # Standardize each factor
         standardized = []

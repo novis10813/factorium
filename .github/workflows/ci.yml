@@ -16,26 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start MinIO
-        run: |
-          docker run -d --name minio \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:latest server /data
-          
-          # Wait for MinIO to start
-          for i in {1..30}; do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO is ready"
-              exit 0
-            fi
-            echo "Waiting for MinIO... (attempt $i)"
-            sleep 2
-          done
-          echo "MinIO failed to start"
-          exit 1
-
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
@@ -45,19 +25,26 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --python ${{ matrix.python-version }} --group dev --extra s3
+        run: uv sync --python ${{ matrix.python-version }} --group dev
 
       - name: Run tests
-        env:
-          MINIO_ENDPOINT: localhost:9000
-          MINIO_ACCESS_KEY: minioadmin
-          MINIO_SECRET_KEY: minioadmin
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_REGION: us-east-1
-          AWS_ENDPOINT_URL: http://localhost:9000
         run: uv run --python ${{ matrix.python-version }} pytest
 
-      - name: Stop MinIO
-        if: always()
-        run: docker stop minio || true
+  # TODO: Add lint job after fixing existing lint/type errors
+  # lint:
+  #   name: Lint
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install uv
+  #       uses: astral-sh/setup-uv@v5
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.11"
+  #     - name: Install dependencies
+  #       run: uv sync --group dev
+  #     - name: Run ruff
+  #       run: uv run ruff check src/
+  #     - name: Run mypy
+  #       run: uv run mypy src/

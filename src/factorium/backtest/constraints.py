@@ -4,9 +4,9 @@ Weight constraints for backtesting.
 Provides constraints for position sizing and weight bounds.
 """
 
-from abc import ABC, abstractmethod
-
+from typing import Optional, Dict
 import polars as pl
+from abc import ABC, abstractmethod
 
 
 class WeightConstraint(ABC):

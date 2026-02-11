@@ -1,10 +1,12 @@
+from typing import List, Union
+
 try:
     from typing import Self
 except ImportError:
-    from typing import Self
+    from typing_extensions import Self
 
+import numbers
 import polars as pl
-
 from ...constants import EPSILON
 
 
@@ -44,12 +46,12 @@ class CrossSectionalOpsMixin:
         )
         return self.__class__(result_lf, "cs_demean")
 
-    def cs_winsorize(self, limits: float | list[float] = 0.025) -> Self:
+    def cs_winsorize(self, limits: Union[float, List[float]] = 0.025) -> Self:
         """
         Cross-sectional winsorization. Strict: Returns NaN if any input is NaN.
         Limits can be a single float (applied to both sides) or [lower, upper].
         """
-        if isinstance(limits, (int, float)):
+        if isinstance(limits, numbers.Real):
             lower_lim = upper_lim = limits
         else:
             lower_lim, upper_lim = limits

@@ -250,48 +250,52 @@ fig = close.plot(
 
 ## 因子評估 (`Factor.eval`)
 
-`Factor` 內建簡單的因子評估流程，底層由 `FactorAnalyzer` 類別實作。  
+`Factor` 內建簡單的因子評估流程，底層由 `FactorEvaluator` 類別實作。  
 透過 `factor.eval(...)`，可以一次計算常見的評估指標並輸出視覺化報告。
 
 ### 介面說明
 
 ```python
-result = factor.eval(
-    prices: Factor | AggBar,        # 價格數據（Factor 或 AggBar）
-    periods: int = 1,                # 持有期（單位：bar 數 / 天等，目前僅支援單一 int）
-    quantiles: int = 5,              # 分層數量（per-day cross-sectional quantiles）
-    output_dir: str | None = None,  # 若提供路徑，會輸出評估結果到時間戳目錄
-    price_col: str = "close",       # 價格欄位名稱（當 prices 為 AggBar 時使用）
+results = factor.eval(
+    prices: Factor,                 # 價格因子（例如 close 價）
+    periods: list[int] = (1, 5, 10),# 持有期（單位：bar 數 / 天等）
+    quantiles: int = 5,             # 分層數量（global quantile）
+    save_path: str | None = None,   # 若提供路徑，會輸出評估圖表 PNG
     **kwargs,
-) -> FactorAnalysisResult
+)
 ```
 
-`result` 回傳一個 `FactorAnalysisResult` dataclass，主要包含：
+`results` 回傳一個 `dict`，主要包含：
 
-- **`factor_name`**: 因子名稱
-- **`periods`**: 持有期（`int`，未來可能支援 `list[int]`）
-- **`quantiles`**: 分層數量
-- **`ic_series`**: `pd.DataFrame` — 每日 Rank IC 時間序列（index=start_time）
-- **`ic_summary`**: `dict` — IC 統計摘要（`mean_ic`, `ic_std`, `ic_ir`, `t-stat`）
-- **`turnover_series`**: `pd.Series` — 每日因子 turnover（1 - rank autocorrelation，index=start_time）
+- **`ic_series`**: `DataFrame`  
+  - index: `end_time`  
+  - columns: `IC_1d`, `IC_5d`, …（各持有期的每日 Rank IC）
+- **`ic_mean`**: `Series` — 各持有期的平均 IC
+- **`ic_ir`**: `Series` — 各持有期的 IC information ratio (`mean / std`)
+- **`turnover_series`**: `Series` — 每日因子 turnover（橫截面 rank 自相關）
 - **`turnover_mean`**: `float` — turnover 的平均值
-- **`quantile_returns`**: `pd.DataFrame` — 各 quantile 的平均未來報酬（MultiIndex: start_time, quantile）
-- **`cumulative_returns`**: `pd.DataFrame | None` — 各 quantile 的累計報酬（可選）
+- **`layer_returns`**: `dict[int, Series]`  
+  - key: 持有期（例如 `1`, `5`, `10`）  
+  - value: 該持有期下，各 **global quantile** 的平均未來報酬
+- **`spread`**: `dict[int, float]` — 每個持有期下，最高 quantile 減最低 quantile 的 long-short spread
 
-`FactorAnalysisResult` 提供以下便利方法：
+若指定 `save_path`，會額外輸出一張 **4 宮格圖表**：
 
-- **`to_dict()`**: 轉換為字典格式（向後相容）
-- **`save(output_dir)`**: 保存完整實驗結果到指定目錄（見下方說明）
-
-若指定 `output_dir`，會在該目錄下創建時間戳子目錄（格式：`YYYYMMDD_HHMMSS_{factor_name}/`），並輸出：
-
-- **CSV 檔案**：`ic_series.csv`、`ic_summary.csv`、`turnover.csv`、`quantile_returns.csv`、`cumulative_returns.csv`
-- **配置檔案**：`config.json`（包含實驗設定與 metadata）
-- **圖表**：`plots/` 子目錄下的 PNG 圖表（IC 時間序列、IC 分佈、分層收益、累計收益）
+- **左上：Rank IC over Time**
+  - x 軸：時間
+  - y 軸：IC  
+  - 每一條線對應一個持有期（`IC_1d`, `IC_5d`, ...），可以觀察 IC 在時間上的 regime / 穩定度。
+- **右上：Mean Layer Returns**
+  - 取「最長持有期」的 `layer_returns`，畫出各 quantile 的平均未來報酬 bar 圖。  
+  - quantile 是針對「全樣本的 factor 值」做 global `qcut` 後計算。
+- **左下：IC Distribution (KDE by Period)**
+  - 對 `ic_series` 中每個持有期的 IC 時間序列做 KDE，疊在同一張圖上。  
+  - 可比較不同持有期的 IC 分布形狀與偏態。
+- **右下：Factor Turnover (Rank Autocorrelation)**
+  - 每日橫截面因子排名與前一日排名的相關係數。  
+  - 接近 1 代表排名很穩定（低 turnover），接近 0 或負值代表排名變動較大（高 turnover）。
 
 ### 範例：對自訂因子進行評估
-
-#### 使用 Factor 作為價格數據
 
 ```python
 from factorium import AggBar, Factor
@@ -300,51 +304,20 @@ agg = loader.load_aggbar(...)
 close = agg["close"]          # 價格因子
 
 # 建立一個簡單的動量因子
+returns_1d = close.ts_delta(1) / close.ts_shift(1)
 momentum_20 = close.ts_delta(20) / close.ts_shift(20)
+factor = momentum_20
 
-# 跑評估並輸出結果
-result = momentum_20.eval(
-    prices=close,              # 傳入 Factor
-    periods=1,
+# 跑評估並輸出圖表
+results = factor.eval(
+    prices=close,
+    periods=[1, 5, 20],
     quantiles=10,
-    output_dir="./experiments",
+    save_path="factor_eval_report.png",
 )
 
-print(result.ic_summary['mean_ic'])
-print(result.turnover_mean)
-```
-
-#### 使用 AggBar 作為價格數據
-
-```python
-# 直接傳入 AggBar，會自動使用 price_col 指定的欄位（預設 "close"）
-result = momentum_20.eval(
-    prices=agg,                # 傳入 AggBar
-    periods=1,
-    quantiles=5,
-    price_col="close",         # 指定價格欄位
-    output_dir="./experiments",
-)
-
-# 查看結果摘要
-print(result)
-# FactorAnalysisResult: momentum_20
-#   Periods: 1, Quantiles: 5
-#   Mean IC: 0.0234
-#   IC Std: 0.1456
-#   IC IR: 0.1607
-#   Turnover: 0.8234
-```
-
-#### 手動保存結果
-
-```python
-# 不指定 output_dir，先進行分析
-result = momentum_20.eval(prices=agg, periods=1)
-
-# 稍後再保存（例如根據條件決定是否保存）
-if result.ic_summary['ic_ir'] > 1.0:
-    result.save("./experiments")
+print(results["ic_mean"])
+print(results["spread"])
 ```
 
 ---

@@ -52,7 +52,7 @@ class BaseExchangeAdapter(ABC):
     @abstractmethod
     def build_parquet_glob(
         self,
-        base_path: str,
+        base_path: Path,
         symbols: list[str],
         data_type: str,
         market_type: str,

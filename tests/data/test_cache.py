@@ -9,7 +9,6 @@ import polars as pl
 import pytest
 
 from factorium.data.cache import BarCache
-from factorium.storage import LocalStorageBackend
 
 
 @pytest.fixture
@@ -42,13 +41,13 @@ class TestBarCache:
 
     def test_cache_initialization(self, temp_cache_dir):
         """Test cache initializes correctly."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
-        assert cache.storage.base_path == temp_cache_dir
+        cache = BarCache(cache_dir=temp_cache_dir)
+        assert cache.cache_dir == temp_cache_dir
         assert temp_cache_dir.exists()
 
     def test_cache_miss_returns_none(self, temp_cache_dir):
         """Test that cache miss returns None."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         result = cache.get(
             exchange="binance",
@@ -63,7 +62,7 @@ class TestBarCache:
 
     def test_cache_put_and_get(self, temp_cache_dir, sample_bar_df):
         """Test putting and getting from cache."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         cache.put(
             df=sample_bar_df,
@@ -89,7 +88,7 @@ class TestBarCache:
 
     def test_cache_key_different_symbols(self, temp_cache_dir, sample_bar_df):
         """Test that different symbols produce different cache keys."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         cache.put(
             df=sample_bar_df,
@@ -114,7 +113,7 @@ class TestBarCache:
 
     def test_cache_key_different_interval(self, temp_cache_dir, sample_bar_df):
         """Test that different intervals produce different cache keys."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         cache.put(
             df=sample_bar_df,
@@ -139,7 +138,7 @@ class TestBarCache:
 
     def test_cache_daily_files(self, temp_cache_dir, sample_bar_df):
         """Test that cache creates daily files."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         cache.put(
             df=sample_bar_df,
@@ -157,7 +156,7 @@ class TestBarCache:
 
     def test_get_date_range(self, temp_cache_dir, sample_bar_df):
         """Test getting data for a date range."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         for day in range(1, 4):
             cache.put(
@@ -185,7 +184,7 @@ class TestBarCache:
 
     def test_get_date_range_partial_miss(self, temp_cache_dir, sample_bar_df):
         """Test that partial cache miss returns None for range."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         for day in [1, 3]:
             cache.put(
@@ -212,7 +211,7 @@ class TestBarCache:
 
     def test_clear_cache(self, temp_cache_dir, sample_bar_df):
         """Test clearing the cache."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)), cache_prefix="")
+        cache = BarCache(cache_dir=temp_cache_dir)
 
         cache.put(
             df=sample_bar_df,
