@@ -13,3 +13,11 @@ site/
 # Data source
 Data/
 test_data/
+
+# Coverage reports
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Git worktrees
+.worktrees/

@@ -198,6 +198,280 @@ def test_analyze_returns_dataclass(sample_data):
 
     assert isinstance(result, FactorAnalysisResult)
     assert result.factor_name == "my_factor"
-    assert result.periods == 1
-    assert "mean_ic" in result.ic_summary
+    # periods is always a list now
+    assert result.periods == [1]
+    # ic_summary is always dict[int, dict[str, float]] now
+    assert 1 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
     assert hasattr(result, "to_dict")
+
+
+def test_calculate_turnover(sample_data):
+    """Test turnover calculation using rank autocorrelation."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+
+    # Prepare data first
+    analyzer.prepare_data(periods=[1])
+
+    # Calculate turnover
+    turnover_series = analyzer.calculate_turnover()
+
+    # Assertions
+    assert isinstance(turnover_series, pd.Series)
+    assert turnover_series.index.name == "start_time"
+    assert len(turnover_series) > 0
+    # Turnover should be between 0 and 2 (since 1 - (-1) = 2)
+    assert turnover_series.min() >= -0.1  # Allow small negative due to correlation
+    assert turnover_series.max() <= 2.1
+
+
+def test_analysis_result_has_turnover_fields(sample_data):
+    """Test that FactorAnalysisResult includes turnover fields."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+
+    result = analyzer.analyze(periods=1)
+
+    # Check turnover fields exist
+    assert hasattr(result, "turnover_series")
+    assert hasattr(result, "turnover_mean")
+
+    # Check types
+    assert isinstance(result.turnover_series, pd.Series)
+    assert isinstance(result.turnover_mean, (float, np.floating))
+
+    # Check values are reasonable
+    assert not np.isnan(result.turnover_mean)
+
+
+def test_save_creates_correct_structure(sample_data):
+    """Test that save() creates correct directory structure."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+    result = analyzer.analyze(periods=1)
+
+    import tempfile
+    from pathlib import Path
+    import json
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        # Find the created experiment folder
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        assert len(exp_dirs) == 1
+        exp_dir = exp_dirs[0]
+
+        # Check folder name format: YYYYMMDD_HHMMSS_factorname
+        folder_name = exp_dir.name
+        parts = folder_name.split("_")
+        assert len(parts) >= 3
+        assert parts[0].isdigit() and len(parts[0]) == 8  # YYYYMMDD
+        assert parts[1].isdigit() and len(parts[1]) == 6  # HHMMSS
+
+        # Check CSV files exist
+        assert (exp_dir / "ic_series.csv").exists()
+        assert (exp_dir / "ic_summary.csv").exists()
+        assert (exp_dir / "turnover.csv").exists()
+        assert (exp_dir / "quantile_returns_period_1.csv").exists()
+
+        # cumulative_returns may be None
+        if result.cumulative_returns is not None:
+            assert (exp_dir / "cumulative_returns_period_1.csv").exists()
+
+        # Check config.json exists and has correct structure
+        config_path = exp_dir / "config.json"
+        assert config_path.exists()
+
+        with open(config_path) as f:
+            config = json.load(f)
+
+        assert config["factor_name"] == result.factor_name
+        assert config["periods"] == result.periods
+        assert config["quantiles"] == result.quantiles
+        assert "created_at" in config
+
+        # Check plots directory exists
+        plots_dir = exp_dir / "plots"
+        assert plots_dir.exists()
+        assert plots_dir.is_dir()
+
+
+def test_save_generates_plots(sample_data):
+    """Test that save() generates plot files."""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=5)
+    result = analyzer.analyze(periods=1)
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        exp_dir = exp_dirs[0]
+        plots_dir = exp_dir / "plots"
+
+        # Check plot files exist
+        assert (plots_dir / "ic_timeseries.png").exists()
+        assert (plots_dir / "ic_distribution.png").exists()
+        assert (plots_dir / "quantile_returns_period_1.png").exists()
+
+
+def test_analyze_multi_horizon_returns_list_periods(sample_data):
+    """analyze(periods=[1, 5]) 應回傳 list periods。"""
+    from factorium.factors.analyzer import FactorAnalysisResult
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    assert isinstance(result, FactorAnalysisResult)
+    assert result.periods == [1, 5]
+
+
+def test_analyze_multi_horizon_ic_summary_structure(sample_data):
+    """multi-horizon 時 ic_summary 應為 dict[int, dict]。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    # ic_summary 應為 {1: {...}, 5: {...}}
+    assert isinstance(result.ic_summary, dict)
+    assert 1 in result.ic_summary
+    assert 5 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
+    assert "mean_ic" in result.ic_summary[5]
+
+
+def test_analyze_single_horizon_consistent_format(sample_data):
+    """單一 horizon 時格式與多 horizon 一致（統一為 dict[int, dict]）。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=1)
+
+    # periods 現在總是 list[int]
+    assert isinstance(result.periods, list)
+    assert result.periods == [1]
+    # ic_summary 現在總是 dict[int, dict[str, float]]
+    assert isinstance(result.ic_summary, dict)
+    assert 1 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
+    assert isinstance(result.ic_summary[1]["mean_ic"], float)
+
+
+def test_repr_multi_horizon(sample_data):
+    """multi-horizon __repr__ 應顯示所有 period 的 IC。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    result = analyzer.analyze(periods=[1, 5])
+
+    repr_str = repr(result)
+    assert "my_factor" in repr_str
+    assert "[1, 5]" in repr_str
+    # 應該有多個 period 的 IC 資訊
+    assert "Period 1" in repr_str
+    assert "Period 5" in repr_str
+
+
+def test_save_multi_horizon_creates_per_period_files(sample_data):
+    """multi-horizon save 應為每個 period 建立 quantile_returns 檔案。"""
+    import tempfile
+    from pathlib import Path
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=2)
+    result = analyzer.analyze(periods=[1, 5])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        assert len(exp_dirs) == 1
+        exp_dir = exp_dirs[0]
+
+        # 應有 quantile_returns_period_1.csv, quantile_returns_period_5.csv
+        assert (exp_dir / "quantile_returns_period_1.csv").exists()
+        assert (exp_dir / "quantile_returns_period_5.csv").exists()
+
+        # 應有 ic_summary.csv 包含多行
+        ic_summary_path = exp_dir / "ic_summary.csv"
+        assert ic_summary_path.exists()
+
+        # 應有 config.json 包含 periods
+        config_path = exp_dir / "config.json"
+        assert config_path.exists()
+
+
+def test_plot_ic_decay(sample_data):
+    """multi-horizon 應支援 plot_ic_decay() 繪製 IC decay 曲線。"""
+    import matplotlib.figure as mpl_figure
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+    analyzer.prepare_data(periods=[1, 3, 5])
+
+    fig = analyzer.plot_ic_decay(periods=[1, 3, 5])
+    assert isinstance(fig, mpl_figure.Figure)
+
+
+def test_save_multi_horizon_includes_ic_decay_plot(sample_data):
+    """multi-horizon save 應包含 ic_decay.png。"""
+    import tempfile
+    from pathlib import Path
+
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices, quantiles=2)
+    result = analyzer.analyze(periods=[1, 3, 5])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result.save(tmpdir)
+
+        exp_dirs = list(Path(tmpdir).glob("*_*"))
+        exp_dir = exp_dirs[0]
+        plots_dir = exp_dir / "plots"
+
+        assert (plots_dir / "ic_decay.png").exists()
+
+
+def test_analyze_empty_periods_list_raises_error(sample_data):
+    """analyze(periods=[]) 應拋出 ValueError。"""
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+
+    analyzer = FactorAnalyzer(factor, prices)
+
+    with pytest.raises(ValueError, match="Periods list cannot be empty"):
+        analyzer.analyze(periods=[])

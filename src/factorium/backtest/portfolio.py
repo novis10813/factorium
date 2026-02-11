@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 import pandas as pd
 
@@ -16,9 +15,9 @@ class Portfolio:
 
     initial_capital: float = 10000.0
     cash: float = field(init=False)
-    positions: Dict[str, float] = field(default_factory=dict)
-    history: List[Dict] = field(default_factory=list)
-    trade_log: List[Dict] = field(default_factory=list)
+    positions: dict[str, float] = field(default_factory=dict)
+    history: list[dict] = field(default_factory=list)
+    trade_log: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.cash = self.initial_capital

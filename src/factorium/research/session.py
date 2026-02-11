@@ -9,15 +9,20 @@ Example:
     >>> print(result.metrics)
 """
 
-from typing import Optional, Union, Dict, Any, List, Callable
-import polars as pl
-import pandas as pd
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pandas as pd
+import polars as pl
 
 from ..aggbar import AggBar
+from ..backtest.vectorized import BacktestResult, VectorizedBacktester
 from ..factors.core import Factor
 from ..factors.parser import FactorExpressionParser
-from ..backtest.vectorized import VectorizedBacktester, BacktestResult
+
+if TYPE_CHECKING:
+    from ..factors.analyzer import FactorAnalysisResult
 
 
 class ResearchSession:
@@ -42,7 +47,7 @@ class ResearchSession:
 
     def __init__(
         self,
-        data: Union[AggBar, pd.DataFrame, pl.DataFrame],
+        data: AggBar | pd.DataFrame | pl.DataFrame,
         default_frequency: str = "1h",
         default_initial_capital: float = 10000.0,
         default_transaction_cost: float = 0.0003,
@@ -55,20 +60,20 @@ class ResearchSession:
         self.default_frequency = default_frequency
         self.default_initial_capital = default_initial_capital
         self.default_transaction_cost = default_transaction_cost
-        self._factors: Dict[str, Factor] = {}  # Cache for created factors
+        self._factors: dict[str, Factor] = {}  # Cache for created factors
         self._parser = FactorExpressionParser()
 
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         """Return list of symbols in the data."""
         return self.data.symbols
 
     @property
-    def cols(self) -> List[str]:
+    def cols(self) -> list[str]:
         """Return list of columns in the data."""
         return self.data.cols
 
-    def create_factor(self, expr: Union[str, Callable[[AggBar], Factor]], name: Optional[str] = None) -> Factor:
+    def create_factor(self, expr: str | Callable[[AggBar], Factor], name: str | None = None) -> Factor:
         """
         Create and cache a factor from expression or callable.
 
@@ -84,8 +89,8 @@ class ResearchSession:
             >>> session.create_factor("ts_mean(close, 20)", "ma20")
             >>> session.create_factor(lambda agg: agg["close"].ts_return(20), "ret_20d")
         """
-        # Generate cache key
-        cache_key = name or (expr if isinstance(expr, str) else id(expr))
+        # Generate cache key (always use str)
+        cache_key: str = name if name else (expr if isinstance(expr, str) else str(id(expr)))
 
         # Return cached if exists
         if cache_key in self._factors:
@@ -100,10 +105,13 @@ class ResearchSession:
                     raise TypeError(f"Expected Factor for column {expr}, got {type(res)}")
                 factor = res
             else:
-                # Build context for parser
-                context = {
-                    col: self.data[col] for col in self.data.cols if col not in ["start_time", "end_time", "symbol"]
-                }
+                # Build context for parser (only include Factor types)
+                context: dict[str, Factor] = {}
+                for col in self.data.cols:
+                    if col not in ["start_time", "end_time", "symbol"]:
+                        item = self.data[col]
+                        if isinstance(item, Factor):
+                            context[col] = item
                 factor = self._parser.parse(expr, context)
 
             if name:
@@ -121,26 +129,26 @@ class ResearchSession:
         return factor
 
     @classmethod
-    def from_csv(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+    def from_csv(cls, path: str | Path, **kwargs) -> "ResearchSession":
         """Create ResearchSession from CSV file."""
         aggbar = AggBar.from_csv(Path(path))
         return cls(aggbar, **kwargs)
 
     @classmethod
-    def from_parquet(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+    def from_parquet(cls, path: str | Path, **kwargs) -> "ResearchSession":
         """Create ResearchSession from Parquet file."""
         df = pl.read_parquet(path)
         aggbar = AggBar.from_df(df)
         return cls(aggbar, **kwargs)
 
     @classmethod
-    def from_df(cls, df: Union[pd.DataFrame, pl.DataFrame], **kwargs) -> "ResearchSession":
+    def from_df(cls, df: pd.DataFrame | pl.DataFrame, **kwargs) -> "ResearchSession":
         """Create ResearchSession from DataFrame."""
         aggbar = AggBar.from_df(df)
         return cls(aggbar, **kwargs)
 
     @classmethod
-    def load(cls, path: Union[str, Path], **kwargs) -> "ResearchSession":
+    def load(cls, path: str | Path, **kwargs) -> "ResearchSession":
         """
         Auto-detect format and load data.
 
@@ -209,7 +217,8 @@ class ResearchSession:
         backtest = self.backtest(factor)
 
         # Format report
-        ic_summary = analysis.ic_summary
+        # ic_summary is now always dict[int, dict[str, float]]
+        ic_stats = analysis.ic_summary.get(periods, {})
         metrics = backtest.metrics
 
         report = f"""
@@ -217,9 +226,9 @@ Factor Analysis Report: {factor.name}
 {"=" * 60}
 
 IC Analysis (periods={periods}):
-  Mean IC:        {ic_summary.get("mean_ic", 0):.4f}
-  IC Std:         {ic_summary.get("ic_std", 0):.4f}
-  IC IR:          {ic_summary.get("ic_ir", 0):.4f}
+  Mean IC:        {ic_stats.get("mean_ic", 0):.4f}
+  IC Std:         {ic_stats.get("ic_std", 0):.4f}
+  IC IR:          {ic_stats.get("ic_ir", 0):.4f}
 
 Backtest Performance:
   Total Return:   {metrics.get("total_return", 0):.2%}
@@ -260,9 +269,9 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
         signal: Factor,
         neutralization: str = "market",
         entry_price: str = "close",
-        frequency: Optional[str] = None,
-        initial_capital: Optional[float] = None,
-        transaction_cost: Optional[float] = None,
+        frequency: str | None = None,
+        initial_capital: float | None = None,
+        transaction_cost: float | None = None,
     ) -> BacktestResult:
         """
         Run backtest with given signal.
@@ -301,9 +310,9 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
 
     def slice(
         self,
-        start: Optional[Union[int, str]] = None,
-        end: Optional[Union[int, str]] = None,
-        symbols: Optional[List[str]] = None,
+        start: int | str | None = None,
+        end: int | str | None = None,
+        symbols: list[str] | None = None,
     ) -> "ResearchSession":
         """
         Create new session with subset of data.

@@ -58,7 +58,7 @@ class TestLoadAggbarTimeBars:
 
     def test_returns_aggbar(self, sample_hive_data):
         """Test that load_aggbar returns AggBar instance."""
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(
@@ -78,7 +78,7 @@ class TestLoadAggbarTimeBars:
 
     def test_loads_multiple_symbols(self, sample_hive_data):
         """Test loading multiple symbols."""
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(
@@ -98,7 +98,7 @@ class TestLoadAggbarTimeBars:
 
     def test_uses_cache_when_enabled(self, sample_hive_data, tmp_path):
         """Test that cache is used when enabled."""
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         with patch("factorium.data.loader.BarCache") as MockCache:
             mock_cache_instance = MagicMock()
@@ -123,7 +123,7 @@ class TestLoadAggbarTimeBars:
 
     def test_cache_hit_skips_aggregation(self, sample_hive_data):
         """Test that cache hit skips DuckDB aggregation."""
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         cached_df = pl.DataFrame(
             {
@@ -167,7 +167,7 @@ class TestLoadAggbarTimeBars:
 
     def test_different_intervals(self, sample_hive_data):
         """Test that different intervals produce different bar counts."""
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result_1m = loader.load_aggbar(
@@ -198,7 +198,7 @@ class TestLoadAggbarTimeBars:
 
     def test_raises_on_no_data(self, sample_hive_data):
         """Test that ValueError is raised when no data is found."""
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             with pytest.raises(ValueError, match="No data found"):
@@ -217,7 +217,7 @@ class TestLoadAggbarTimeBars:
 
 class TestIncrementalDownload:
     def test_find_missing_files_all_exist(self, sample_hive_data):
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
         missing = loader._find_missing_files(
             symbols=["BTCUSDT", "ETHUSDT"],
             data_type="aggTrades",
@@ -229,7 +229,7 @@ class TestIncrementalDownload:
         assert missing == {}
 
     def test_find_missing_files_partial_missing(self, sample_hive_data):
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
         missing = loader._find_missing_files(
             symbols=["BTCUSDT"],
             data_type="aggTrades",
@@ -242,7 +242,7 @@ class TestIncrementalDownload:
         assert len(missing["BTCUSDT"]) == 6
 
     def test_find_missing_files_new_symbol(self, sample_hive_data):
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
         missing = loader._find_missing_files(
             symbols=["BTCUSDT", "NEWCOIN"],
             data_type="aggTrades",
@@ -256,7 +256,7 @@ class TestIncrementalDownload:
         assert "BTCUSDT" not in missing
 
     def test_group_consecutive_dates(self, sample_hive_data):
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         dates = [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 5), datetime(2024, 1, 6)]
         ranges = loader._group_consecutive_dates(dates)
@@ -266,11 +266,11 @@ class TestIncrementalDownload:
         assert ranges[1] == (datetime(2024, 1, 5), datetime(2024, 1, 6))
 
     def test_group_consecutive_dates_empty(self, sample_hive_data):
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
         assert loader._group_consecutive_dates([]) == []
 
     def test_download_missing_only_called(self, sample_hive_data):
-        loader = BinanceDataLoader(base_path=sample_hive_data)
+        loader = BinanceDataLoader(backend="local", path=sample_hive_data)
 
         with patch.object(loader, "_find_missing_files") as mock_find:
             mock_find.return_value = {"NEWCOIN": [datetime(2024, 1, 5)]}
