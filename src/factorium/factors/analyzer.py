@@ -240,6 +240,12 @@ class FactorAnalyzer:
         else:
             self.prices = prices
 
+    def _ensure_data_prepared(self, periods: list[int] | None = None, price_col: str | None = None) -> None:
+        """Ensure data is prepared. Auto-calls prepare_data() if needed."""
+        if not hasattr(self, "_clean_data"):
+            logger.info("Data not prepared. Auto-calling prepare_data()...")
+            self.prepare_data(periods=periods, price_col=price_col)
+
     def analyze(self, price_col: str = "close", periods: int | list[int] = 1) -> FactorAnalysisResult:
         """
         Run full factor analysis.
@@ -381,8 +387,7 @@ class FactorAnalyzer:
         Returns:
             pd.DataFrame: IC values indexed by start_time.
         """
-        if not hasattr(self, "_clean_data"):
-            raise ValueError("Data not prepared. Call prepare_data() first.")
+        self._ensure_data_prepared()
 
         period_cols = [c for c in self._clean_data.columns if c.startswith("period_")]
         corr_method = "spearman" if method == "rank" else "pearson"
@@ -438,8 +443,7 @@ class FactorAnalyzer:
         Returns:
             pd.Series: Turnover time series indexed by start_time
         """
-        if not hasattr(self, "_clean_data"):
-            raise ValueError("Data not prepared. Call prepare_data() first.")
+        self._ensure_data_prepared()
 
         # Ensure data is sorted by symbol and time for correct shift operation
         sorted_data = self._clean_data.sort(["symbol", "start_time"])
@@ -474,8 +478,7 @@ class FactorAnalyzer:
         Returns:
             pd.DataFrame: Mean returns and counts per (start_time, quantile).
         """
-        if not hasattr(self, "_clean_data"):
-            raise ValueError("Data not prepared. Call prepare_data() first.")
+        self._ensure_data_prepared(periods=[period])
 
         col = f"period_{period}"
         if col not in self._clean_data.columns:
