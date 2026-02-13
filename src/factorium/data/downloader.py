@@ -17,6 +17,7 @@ import aiofiles  # type: ignore[import-untyped]
 import aiohttp
 
 from .parquet import build_hive_path, csv_to_parquet, get_market_string
+from .utils import calculate_date_range
 
 
 class BinanceDataDownloader:
@@ -82,7 +83,7 @@ class BinanceDataDownloader:
             days: Number of days to download
         """
         self._validate_params(data_type, market_type, futures_type)
-        start_date_dt, end_date_dt = self._calculate_date_range(start_date, end_date, days)
+        start_date_dt, end_date_dt = calculate_date_range(start_date, end_date, days)
         download_dir = self._setup_download_dir(symbol, data_type, market_type, futures_type)
         dates = self._generate_date_list(start_date_dt, end_date_dt)
 
@@ -208,37 +209,6 @@ class BinanceDataDownloader:
         if market_type == "futures" and futures_type not in ["cm", "um"]:
             raise ValueError("Invalid futures type")
 
-    def _calculate_date_range(
-        self, start_date: str | None, end_date: str | None, days: int | None
-    ) -> tuple[datetime, datetime]:
-        """Calculate date range."""
-        try:
-            if start_date and end_date:
-                try:
-                    start = datetime.strptime(start_date, "%Y-%m-%d")
-                    end = datetime.strptime(end_date, "%Y-%m-%d")
-
-                    if start > end:
-                        raise ValueError("Start date must be earlier than or equal to end date")
-
-                    return start, end
-                except ValueError as e:
-                    self.logger.error(f"Invalid date format: {str(e)}")
-                    raise
-
-            end = datetime.now()
-            if days:
-                if days < 1:
-                    raise ValueError("Days must be greater than 0")
-                start = end - timedelta(days=days - 1)
-            else:
-                start = end - timedelta(days=6)
-
-            return start, end
-
-        except Exception as e:
-            self.logger.error(f"Error calculating date range: {str(e)}")
-            raise
 
     def _setup_download_dir(self, symbol: str, data_type: str, market_type: str, futures_type: str = "cm") -> Path:
         """Setup download directory (kept for backward compatibility, now uses temp dir)."""

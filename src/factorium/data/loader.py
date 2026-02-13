@@ -128,6 +128,7 @@ from .cache import BarCache  # noqa: E402
 from .downloader import BinanceDataDownloader  # noqa: E402
 from .metadata import AggBarMetadata  # noqa: E402
 from .parquet import get_market_string  # noqa: E402
+from .utils import calculate_date_range  # noqa: E402
 
 
 class BinanceDataLoader:
@@ -336,7 +337,7 @@ class BinanceDataLoader:
             )
 
         # Calculate date range
-        start_dt, end_dt = self._calculate_date_range(start_date, end_date, days)
+        start_dt, end_dt = calculate_date_range(start_date, end_date, days)
 
         # Download missing data
         if force_download:
@@ -368,7 +369,7 @@ class BinanceDataLoader:
 
         aggregator = BarAggregator(duckdb_configurator=duckdb_configurator)
         cache = BarCache(storage=self.storage) if (use_cache and bar_type == "time") else None
-        market_str = self._get_market_string(market_type, futures_type)
+        market_str = get_market_string(market_type, futures_type)
 
         # Collect aggregated data
         all_dfs: list[pl.DataFrame] = []
@@ -514,26 +515,6 @@ class BinanceDataLoader:
 
         return AggBar(result_df, combined_meta)
 
-    def _calculate_date_range(
-        self, start_date: str | None, end_date: str | None, days: int | None
-    ) -> tuple[datetime, datetime]:
-        """Calculate date range."""
-        if start_date and end_date:
-            return (datetime.strptime(start_date, "%Y-%m-%d"), datetime.strptime(end_date, "%Y-%m-%d"))
-
-        if start_date and not end_date and days:
-            return (
-                datetime.strptime(start_date, "%Y-%m-%d"),
-                datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=days),
-            )
-
-        end = datetime.now()
-        if days:
-            start = end - timedelta(days=days - 1)
-        else:
-            start = end - timedelta(days=6)
-
-        return start, end
 
     def load_aggbar_fast(
         self,
@@ -589,11 +570,6 @@ class BinanceDataLoader:
             use_cache=use_cache,
         )
 
-    def _get_market_string(self, market_type: str, futures_type: str) -> str:
-        """Get market string for cache key."""
-        if market_type == "futures":
-            return f"futures_{futures_type}"
-        return market_type
 
     def _check_all_symbols_exist(
         self,
@@ -767,7 +743,7 @@ class BinanceDataLoader:
         """
 
         adapter = BinanceAdapter()
-        market_str = self._get_market_string(market_type, futures_type)
+        market_str = get_market_string(market_type, futures_type)
 
         # Build parquet glob pattern
         parquet_pattern = adapter.build_parquet_glob(
