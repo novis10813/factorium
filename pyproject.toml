@@ -80,6 +80,7 @@ python_files = ["test_*.py"]
 [dependency-groups]
 dev = [
     "freezegun>=1.5.5",
+    "jupyterlab>=4.5.4",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.1",
     "mypy>=1.0.0",
