@@ -61,3 +61,4 @@ nav:
   - 開發者:
     - 測試策略: dev/testing.md
     - 回歸運算子設計: dev/regression-operators.md
+    - Safe Operations 語義: dev/safe-operations.md

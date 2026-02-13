@@ -15,6 +15,9 @@ Factorium 是一個量化因子分析與回測框架，主要模組：
 
 ## `safe_` 函數模式
 
+> **完整文檔**: 請參閱 [`docs/dev/safe-operations.md`](docs/dev/safe-operations.md)
+> **回歸測試**: [`tests/factors/test_safe_operations.py`](tests/factors/test_safe_operations.py)
+
 在此專案中，以 `safe_` 開頭的函數（例如：`safe_mean`, `safe_sum`, `safe_div`）旨在確保計算的「嚴格性」與「安全性」，這對於金融因子的計算尤為重要。
 
 ### 共同特點
@@ -28,9 +31,9 @@ Factorium 是一個量化因子分析與回測框架，主要模組：
     * **資料充裕度檢查**: 如 `safe_corr` 會在計算前確認是否有足夠的有效數據點（例如：多於 2 個）。
 
 3. **safe_div 一致性規範**:
-    * **閾值**: 使用 `POSITION_EPSILON`（`1e-10`）判斷分母接近 0 的情況。
-    * **缺失值回傳**: Pandas 路徑回傳 `np.nan`，Polars 路徑回傳 `null`（建議使用 `pl.lit(None)`）。
-    * **語義**: 分母為 0 或 `abs(denominator) <= POSITION_EPSILON` 時視為缺失，避免產生 `inf`。
+    * **閾值**: 使用 `EPSILON`（`1e-10`，定義於 `factorium.constants`）判斷分母接近 0 的情況。`POSITION_EPSILON` 是向後相容的別名。
+    * **缺失值回傳**: Pandas/NumPy 路徑回傳 `np.nan`，Polars 路徑回傳 `null`（使用 `pl.lit(None)`）。
+    * **語義**: 分母為 0 或 `abs(denominator) <= EPSILON` 時視為缺失，避免產生 `inf`。
 
 ### 範例
 
@@ -71,7 +74,8 @@ docs/
 │   └── backtest.md
 └── dev/                        # 開發者文檔
     ├── testing.md
-    └── regression-operators.md
+    ├── regression-operators.md
+    └── safe-operations.md
 ```
 
 ### 本地預覽
