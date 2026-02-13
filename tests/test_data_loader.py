@@ -13,7 +13,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from freezegun import freeze_time
 
 from factorium import BinanceDataLoader, AggBar
-from factorium.data import build_hive_path
+from factorium.data import build_hive_path, calculate_date_range
 
 
 # =============================================================================
@@ -129,26 +129,26 @@ def create_parquet_file(base_path: Path, market: str, data_type: str, symbol: st
 
 
 class TestCalculateDateRange:
-    """Tests for BinanceDataLoader._calculate_date_range method."""
+    """Tests for calculate_date_range utility function."""
 
-    def test_with_start_and_end_date(self, loader):
+    def test_with_start_and_end_date(self):
         """Test with both start_date and end_date specified."""
-        start_dt, end_dt = loader._calculate_date_range(start_date="2024-01-01", end_date="2024-01-07", days=None)
+        start_dt, end_dt = calculate_date_range(start_date="2024-01-01", end_date="2024-01-07", days=None)
 
         assert start_dt == datetime(2024, 1, 1)
         assert end_dt == datetime(2024, 1, 7)
 
-    def test_with_start_date_and_days(self, loader):
+    def test_with_start_date_and_days(self):
         """Test with start_date and days specified."""
-        start_dt, end_dt = loader._calculate_date_range(start_date="2024-01-01", end_date=None, days=7)
+        start_dt, end_dt = calculate_date_range(start_date="2024-01-01", end_date=None, days=7)
 
         assert start_dt == datetime(2024, 1, 1)
         assert end_dt == datetime(2024, 1, 8)  # 7 days after start
 
     @freeze_time("2024-06-15 12:00:00")
-    def test_with_only_days(self, loader):
+    def test_with_only_days(self):
         """Test with only days specified — aligned to UTC midnight."""
-        start_dt, end_dt = loader._calculate_date_range(start_date=None, end_date=None, days=7)
+        start_dt, end_dt = calculate_date_range(start_date=None, end_date=None, days=7)
 
         # end = start of tomorrow (exclusive), start = end - days
         assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
@@ -158,9 +158,9 @@ class TestCalculateDateRange:
         assert end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0
 
     @freeze_time("2024-06-15 12:00:00")
-    def test_default_7_days(self, loader):
+    def test_default_7_days(self):
         """Test default behavior (no params = 7 days ending tomorrow midnight)."""
-        start_dt, end_dt = loader._calculate_date_range(start_date=None, end_date=None, days=None)
+        start_dt, end_dt = calculate_date_range(start_date=None, end_date=None, days=None)
 
         assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
         assert start_dt == datetime(2024, 6, 9, 0, 0, 0)
@@ -169,9 +169,9 @@ class TestCalculateDateRange:
         assert end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0
 
     @freeze_time("2024-06-15 23:59:59")
-    def test_midnight_alignment_regardless_of_time(self, loader):
+    def test_midnight_alignment_regardless_of_time(self):
         """Test that date range is always midnight-aligned, even when called at 23:59:59."""
-        start_dt, end_dt = loader._calculate_date_range(start_date=None, end_date=None, days=3)
+        start_dt, end_dt = calculate_date_range(start_date=None, end_date=None, days=3)
 
         # Should snap to midnight boundaries
         assert start_dt == datetime(2024, 6, 13, 0, 0, 0)
@@ -179,33 +179,34 @@ class TestCalculateDateRange:
         assert start_dt.microsecond == 0
         assert end_dt.microsecond == 0
 
-    def test_cross_month_range(self, loader):
+    def test_cross_month_range(self):
         """Test date range crossing month boundary."""
-        start_dt, end_dt = loader._calculate_date_range(start_date="2024-01-28", end_date=None, days=10)
+        start_dt, end_dt = calculate_date_range(start_date="2024-01-28", end_date=None, days=10)
 
         assert start_dt == datetime(2024, 1, 28)
         assert end_dt == datetime(2024, 2, 7)  # Crosses into February
 
-    def test_cross_year_range(self, loader):
+    def test_cross_year_range(self):
         """Test date range crossing year boundary."""
-        start_dt, end_dt = loader._calculate_date_range(start_date="2023-12-28", end_date="2024-01-05", days=None)
+        start_dt, end_dt = calculate_date_range(start_date="2023-12-28", end_date="2024-01-05", days=None)
 
         assert start_dt == datetime(2023, 12, 28)
         assert end_dt == datetime(2024, 1, 5)
 
-    def test_single_day_range(self, loader):
+    def test_single_day_range(self):
         """Test single day range (start == end)."""
-        start_dt, end_dt = loader._calculate_date_range(start_date="2024-01-01", end_date="2024-01-01", days=None)
+        start_dt, end_dt = calculate_date_range(start_date="2024-01-01", end_date="2024-01-01", days=None)
 
         assert start_dt == datetime(2024, 1, 1)
         assert end_dt == datetime(2024, 1, 1)
 
-    def test_start_date_with_one_day(self, loader):
+    def test_start_date_with_one_day(self):
         """Test start_date with days=1."""
-        start_dt, end_dt = loader._calculate_date_range(start_date="2024-01-01", end_date=None, days=1)
+        start_dt, end_dt = calculate_date_range(start_date="2024-01-01", end_date=None, days=1)
 
         assert start_dt == datetime(2024, 1, 1)
         assert end_dt == datetime(2024, 1, 2)
+
 
 
 # =============================================================================

@@ -21,6 +21,7 @@ from .parquet import (
     get_market_string,
     read_hive_parquet,
 )
+from .utils import calculate_date_range
 
 __all__ = [
     "BinanceDataLoader",
@@ -33,4 +34,5 @@ __all__ = [
     "build_hive_path",
     "get_market_string",
     "BINANCE_COLUMNS",
+    "calculate_date_range",
 ]
