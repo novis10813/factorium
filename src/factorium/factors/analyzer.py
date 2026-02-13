@@ -222,10 +222,11 @@ class FactorAnalyzer:
 
     prices: Factor | None  # Type annotation for prices attribute
 
-    def __init__(self, factor: Factor, prices: AggBar | Factor, quantiles: int = 5):
+    def __init__(self, factor: Factor, prices: AggBar | Factor, quantiles: int = 5, mask: str | None = None):
         self.factor = factor
         self.quantiles = quantiles
         self._raw_prices = prices
+        self._mask = mask
         if isinstance(prices, AggBar):
             try:
                 close_col = prices["close"]
@@ -340,7 +341,12 @@ class FactorAnalyzer:
             if price_col not in self._raw_prices._data.columns:
                 available_cols = ", ".join(sorted(self._raw_prices._data.columns))
                 raise ValueError(f"Price column '{price_col}' not found in AggBar. Available columns: {available_cols}")
-            prices_lf = self._raw_prices.to_polars().lazy().select(["start_time", "end_time", "symbol", price_col])
+            select_cols = ["start_time", "end_time", "symbol", price_col]
+            if self._mask is not None:
+                if self._mask not in self._raw_prices._data.columns:
+                    raise ValueError(f"Mask column '{self._mask}' not found in AggBar")
+                select_cols.append(self._mask)
+            prices_lf = self._raw_prices.to_polars().lazy().select(select_cols)
             price_col_name = price_col
         elif self.prices is not None:
             # self.prices is a Factor (we've narrowed the type above)
@@ -356,6 +362,9 @@ class FactorAnalyzer:
             on=["start_time", "end_time", "symbol"],
             how="inner",
         )
+
+        if self._mask is not None and isinstance(self._raw_prices, AggBar):
+            df_lf = df_lf.filter(pl.col(self._mask).fill_null(False))
 
         # Calculate forward returns for each period
         # return = (price.shift(-p) / price) - 1.0
