@@ -318,3 +318,26 @@ Bar 聚合使用 DuckDB 的 SQL 引擎，效能特點：
 2. **最後一個 Bar**：Volume/Dollar Bar 的最後一個 bar 可能不完整（未達閾值）
 3. **空資料處理**：若指定日期無資料，會回傳空的 DataFrame 和零值 metadata
 4. **多標的聚合**：每個標的獨立聚合，最後合併
+
+---
+
+## 與 Universe / Checklist 整合
+
+`AggBar` 可透過 `with_mask` 直接掛入資產池遮罩欄位，後續因子與回測可共用同一個欄位名稱：
+
+```python
+from factorium import Universe, ExcludeStablecoins
+
+universe = Universe(rules=[ExcludeStablecoins()])
+metadata = {}
+tags = {}
+
+agg = agg.with_mask(
+    name="universe_mask",
+    mask_source=universe,
+    metadata=metadata,
+    tags=tags,
+)
+```
+
+若你要進一步做因子與回測，請參考 [Universe 與 Checklist](universe.md)。

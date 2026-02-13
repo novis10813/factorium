@@ -78,6 +78,7 @@ uv add factorium
 | [快速開始](getting-started/quickstart.md) | 五分鐘上手教學 |
 | [資料獲取](getting-started/data-acquisition.md) | 下載與載入市場數據 |
 | [Bar 聚合](user-guide/bar.md) | 不同類型的 K 線聚合 |
+| [Universe 與 Checklist](user-guide/universe.md) | 建立資產池遮罩（Universe / Checklist）並串接因子與回測 |
 | [Factor 因子](user-guide/factor.md) | 因子計算與運算子 |
 | [因子分析](user-guide/analyzer.md) | IC / 分層收益等分析工具 |
 | [策略回測](user-guide/backtest.md) | 向量化回測與權重約束 |

@@ -262,9 +262,25 @@ result = factor.eval(
     quantiles: int = 5,              # 分層數量（per-day cross-sectional quantiles）
     output_dir: str | None = None,  # 若提供路徑，會輸出評估結果到時間戳目錄
     price_col: str = "close",       # 價格欄位名稱（當 prices 為 AggBar 時使用）
+    mask: str | None = None,         # 選填：限制分析樣本的遮罩欄位名稱
     **kwargs,
 ) -> FactorAnalysisResult
 ```
+
+### 與 Universe / Checklist 遮罩整合
+
+若你在 `AggBar` 上已建立 Universe/Checklist 遮罩欄位，可以直接傳入 `mask=`：
+
+```python
+result = momentum_20.eval(
+    prices=agg,
+    periods=1,
+    quantiles=5,
+    mask="checklist_mask",
+)
+```
+
+這可確保分位分組與後續評估都只在可交易資產池上進行，避免把不在策略範圍內的標的納入統計。
 
 `result` 回傳一個 `FactorAnalysisResult` dataclass，主要包含：
 
@@ -357,5 +373,4 @@ if result.ic_summary['ic_ir'] > 1.0:
 - 透過 `.plot()` 能快速視覺化多標的因子行為  
 
 搭配 `BinanceDataLoader` + `Bar` + `AggBar`，可以很方便地從原始交易資料一路建構到完整的因子研究流程。
-
 
