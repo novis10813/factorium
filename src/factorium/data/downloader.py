@@ -211,7 +211,11 @@ class BinanceDataDownloader:
     def _calculate_date_range(
         self, start_date: str | None, end_date: str | None, days: int | None
     ) -> tuple[datetime, datetime]:
-        """Calculate date range."""
+        """Calculate date range aligned to UTC midnight.
+
+        All returned datetimes are snapped to midnight (00:00:00) to ensure
+        consistency with the loader's daily processing boundaries.
+        """
         try:
             if start_date and end_date:
                 try:
@@ -226,13 +230,15 @@ class BinanceDataDownloader:
                     self.logger.error(f"Invalid date format: {str(e)}")
                     raise
 
-            end = datetime.now()
+            # Snap to UTC midnight for consistent daily boundaries
+            today_midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            end = today_midnight + timedelta(days=1)
             if days:
                 if days < 1:
                     raise ValueError("Days must be greater than 0")
-                start = end - timedelta(days=days - 1)
+                start = end - timedelta(days=days)
             else:
-                start = end - timedelta(days=6)
+                start = end - timedelta(days=7)
 
             return start, end
 

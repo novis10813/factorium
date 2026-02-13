@@ -517,7 +517,14 @@ class BinanceDataLoader:
     def _calculate_date_range(
         self, start_date: str | None, end_date: str | None, days: int | None
     ) -> tuple[datetime, datetime]:
-        """Calculate date range."""
+        """Calculate date range aligned to UTC midnight.
+
+        All returned datetimes are snapped to midnight (00:00:00) to ensure
+        daily processing boundaries align with bar interval buckets.
+        Without this alignment, a boundary like 09:32:22 UTC would split
+        the 09:32 minute-bucket across two adjacent daily queries,
+        producing duplicate bars with partial OHLCV data.
+        """
         if start_date and end_date:
             return (datetime.strptime(start_date, "%Y-%m-%d"), datetime.strptime(end_date, "%Y-%m-%d"))
 
@@ -527,11 +534,14 @@ class BinanceDataLoader:
                 datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=days),
             )
 
-        end = datetime.now()
+        # Snap to UTC midnight to align daily processing boundaries
+        today_midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # end = start of tomorrow (exclusive) to include today's full data
+        end = today_midnight + timedelta(days=1)
         if days:
-            start = end - timedelta(days=days - 1)
+            start = end - timedelta(days=days)
         else:
-            start = end - timedelta(days=6)
+            start = end - timedelta(days=7)
 
         return start, end
 

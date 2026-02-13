@@ -147,19 +147,37 @@ class TestCalculateDateRange:
 
     @freeze_time("2024-06-15 12:00:00")
     def test_with_only_days(self, loader):
-        """Test with only days specified (should use today as end)."""
+        """Test with only days specified — aligned to UTC midnight."""
         start_dt, end_dt = loader._calculate_date_range(start_date=None, end_date=None, days=7)
 
-        assert end_dt == datetime(2024, 6, 15, 12, 0, 0)
-        assert start_dt == end_dt - timedelta(days=6)  # days-1 = 6
+        # end = start of tomorrow (exclusive), start = end - days
+        assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
+        assert start_dt == datetime(2024, 6, 9, 0, 0, 0)
+        # Both must be midnight-aligned
+        assert start_dt.hour == 0 and start_dt.minute == 0 and start_dt.second == 0
+        assert end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0
 
     @freeze_time("2024-06-15 12:00:00")
     def test_default_7_days(self, loader):
-        """Test default behavior (no params = 7 days ending today)."""
+        """Test default behavior (no params = 7 days ending tomorrow midnight)."""
         start_dt, end_dt = loader._calculate_date_range(start_date=None, end_date=None, days=None)
 
-        assert end_dt == datetime(2024, 6, 15, 12, 0, 0)
-        assert start_dt == end_dt - timedelta(days=6)
+        assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
+        assert start_dt == datetime(2024, 6, 9, 0, 0, 0)
+        # Both must be midnight-aligned
+        assert start_dt.hour == 0 and start_dt.minute == 0 and start_dt.second == 0
+        assert end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0
+
+    @freeze_time("2024-06-15 23:59:59")
+    def test_midnight_alignment_regardless_of_time(self, loader):
+        """Test that date range is always midnight-aligned, even when called at 23:59:59."""
+        start_dt, end_dt = loader._calculate_date_range(start_date=None, end_date=None, days=3)
+
+        # Should snap to midnight boundaries
+        assert start_dt == datetime(2024, 6, 13, 0, 0, 0)
+        assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
+        assert start_dt.microsecond == 0
+        assert end_dt.microsecond == 0
 
     def test_cross_month_range(self, loader):
         """Test date range crossing month boundary."""
