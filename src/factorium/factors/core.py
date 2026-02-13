@@ -68,6 +68,7 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
         quantiles: int = 5,
         output_dir: str | None = None,
         price_col: str = "close",
+        mask: str | None = None,
         **kwargs,
     ) -> "FactorAnalysisResult":
         """
@@ -92,7 +93,7 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
         """
         from .analyzer import FactorAnalyzer
 
-        analyzer = FactorAnalyzer(factor=self, prices=prices, quantiles=quantiles)
+        analyzer = FactorAnalyzer(factor=self, prices=prices, quantiles=quantiles, mask=mask)
 
         result = analyzer.analyze(price_col=price_col, periods=periods)
 
