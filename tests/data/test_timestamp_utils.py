@@ -1,12 +1,16 @@
 # tests/data/test_timestamp_utils.py
+from datetime import datetime, timedelta, timezone
+
 import polars as pl
 import pytest
 
+from factorium.data import utils as data_utils
 from factorium.data.loader import (
     _convert_to_target_unit,
     _detect_timestamp_unit,
     _normalize_timestamps_to_ms,
 )
+from factorium.data.utils import calculate_date_range
 
 
 def test_detect_timestamp_unit_seconds():
@@ -37,6 +41,23 @@ def test_convert_to_target_unit_invalid_unit():
     """Verify that invalid unit raises ValueError."""
     with pytest.raises(ValueError, match="Unsupported target unit"):
         _convert_to_target_unit(1704067200000, "invalid")
+
+
+def test_calculate_date_range_uses_utc_midnight(monkeypatch):
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return cls(2026, 2, 14, 23, 30, tzinfo=timezone(timedelta(hours=8)))
+            return cls(2026, 2, 14, 15, 30, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(data_utils, "datetime", FakeDateTime)
+
+    start, end = calculate_date_range(days=1)
+
+    expected_today_midnight = datetime(2026, 2, 14, 0, 0, tzinfo=timezone.utc)
+    assert start == expected_today_midnight
+    assert end == expected_today_midnight + timedelta(days=1)
 
 
 class TestNormalizeTimestampsToMs:

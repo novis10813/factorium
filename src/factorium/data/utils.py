@@ -3,7 +3,7 @@ Shared utilities for data loading and processing.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def calculate_date_range(
             return start, start + timedelta(days=days)
 
         # Snap to UTC midnight for consistent daily boundaries
-        today_midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         # end = start of tomorrow (exclusive) to include today's full data
         end = today_midnight + timedelta(days=1)
 
