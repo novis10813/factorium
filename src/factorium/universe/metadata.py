@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from pathlib import Path
@@ -47,7 +46,9 @@ class MetadataProvider:
         return parsed
 
     def fetch(self) -> dict[str, SymbolMetadata]:
-        return asyncio.run(self.fetch_async())
+        from ..data.loader import _run_async
+
+        return _run_async(self.fetch_async())
 
     def _parse_exchange_info(self, data: dict) -> dict[str, SymbolMetadata]:
         output: dict[str, SymbolMetadata] = {}

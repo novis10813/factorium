@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from pathlib import Path
 
@@ -9,10 +10,16 @@ import aiohttp
 
 
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
+logger = logging.getLogger(__name__)
 
 
 class TagProvider:
-    """Fetch and cache token categories from CoinGecko."""
+    """Fetch and cache token categories from CoinGecko.
+
+    Note:
+        Calling ``fetch``/``fetch_async`` with ``symbols=None`` performs
+        full-market category fetching and can be slow for large universes.
+    """
 
     def __init__(
         self,
@@ -45,6 +52,9 @@ class TagProvider:
                 return cached
             if all(sym in cached for sym in requested):
                 return {sym: cached[sym] for sym in requested}
+
+        if requested is None:
+            logger.warning("Fetching tags for all symbols may take a long time; pass symbols to limit scope.")
 
         headers: dict[str, str] | None = None
         if self.api_key:
@@ -81,7 +91,9 @@ class TagProvider:
         return {sym: result.get(sym, []) for sym in requested if sym in result}
 
     def fetch(self, symbols: list[str] | None = None) -> dict[str, list[str]]:
-        return asyncio.run(self.fetch_async(symbols=symbols))
+        from ..data.loader import _run_async
+
+        return _run_async(self.fetch_async(symbols=symbols))
 
     def _load_cache(self) -> dict[str, list[str]] | None:
         if not self._cache_path.exists():
