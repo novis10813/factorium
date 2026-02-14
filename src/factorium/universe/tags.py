@@ -17,8 +17,8 @@ class TagProvider:
     """Fetch and cache token categories from CoinGecko.
 
     Note:
-        Calling ``fetch``/``fetch_async`` with ``symbols=None`` performs
-        full-market category fetching and can be slow for large universes.
+        ``symbols`` must be explicitly provided to avoid full-market
+        category fetching from CoinGecko, which can be very slow.
     """
 
     def __init__(
@@ -44,17 +44,15 @@ class TagProvider:
             return await response.json()
 
     async def fetch_async(self, symbols: list[str] | None = None) -> dict[str, list[str]]:
-        requested = [s.upper() for s in symbols] if symbols is not None else None
+        if symbols is None:
+            raise ValueError("symbols must be provided to avoid fetching the entire CoinGecko database")
+
+        requested = [s.upper() for s in symbols]
         cached = self._load_cache()
 
         if cached is not None:
-            if requested is None:
-                return cached
             if all(sym in cached for sym in requested):
                 return {sym: cached[sym] for sym in requested}
-
-        if requested is None:
-            logger.warning("Fetching tags for all symbols may take a long time; pass symbols to limit scope.")
 
         headers: dict[str, str] | None = None
         if self.api_key:
@@ -66,10 +64,14 @@ class TagProvider:
             for item in raw_list if isinstance(raw_list, list) else []:
                 symbol = str(item.get("symbol", "")).upper()
                 coin_id = item.get("id")
-                if symbol and coin_id and symbol not in symbol_to_id:
-                    symbol_to_id[symbol] = str(coin_id)
+                if not symbol or not coin_id:
+                    continue
 
-            targets = requested or sorted(symbol_to_id.keys())
+                coin_id_str = str(coin_id)
+                if symbol not in symbol_to_id or coin_id_str == symbol.lower():
+                    symbol_to_id[symbol] = coin_id_str
+
+            targets = requested
             result: dict[str, list[str]] = {} if cached is None else dict(cached)
 
             for symbol in targets:
@@ -86,8 +88,6 @@ class TagProvider:
                 await asyncio.sleep(0.12)
 
         self._save_cache(result)
-        if requested is None:
-            return result
         return {sym: result.get(sym, []) for sym in requested if sym in result}
 
     def fetch(self, symbols: list[str] | None = None) -> dict[str, list[str]]:
