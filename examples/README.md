@@ -10,6 +10,7 @@ Interactive Jupyter notebooks demonstrating factor research workflows with Facto
 | [02 — Mean Reversion Factor](02_mean_reversion_factor.ipynb) | Mean reversion with cross-sectional processing | Z-score distance, volatility normalization, `cs_rank`, `cs_zscore`, `cs_winsorize`, market-neutral vs. long-only backtest, advanced operators (`ts_autocorr`, `ts_kurtosis`, `ts_skewness`) |
 | [03 — Data Loading & Exploration](03_data_loading_and_exploration.ipynb) | Deep dive into data handling | `BinanceDataLoader`, `AggBar` methods, time-bar intervals (1min/5min/1h), slicing, CSV/Parquet export, `ResearchSession` from files |
 | [04 — Multi-Factor Combination](04_multi_factor_combination.ipynb) | Combine and select factors | Factor correlations, `ts_corr`, `cs_neutralize`, `CompositeFactor` (equal/custom/z-score), single vs. composite backtest, factor selection workflow |
+| [05 — Universe & Checklist Workflow](05_universe_checklist_workflow.ipynb) | Constrain research and backtest to a tradable asset universe | `Universe`, `Checklist`, `AggBar.with_mask`, `Factor.eval(..., mask=...)`, `Backtester(..., mask=...)` |
 
 ## Getting Started
 
@@ -44,3 +45,4 @@ If you're new to Factorium, we recommend starting with:
 2. **Notebook 01** — Walk through a full factor research workflow
 3. **Notebook 02** — Learn about signal processing and cross-sectional transforms
 4. **Notebook 04** — Combine multiple factors into a composite signal
+5. **Notebook 05** — Apply universe/checklist masks consistently in analysis and backtests
