@@ -9,7 +9,6 @@ import polars as pl
 import pytest
 
 from factorium.data.cache import BarCache
-
 from factorium.storage import LocalStorageBackend
 
 
@@ -18,6 +17,13 @@ def temp_cache_dir():
     """Create temporary cache directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
+
+
+@pytest.fixture
+def cache(temp_cache_dir):
+    """Create cache using non-deprecated storage API."""
+    storage = LocalStorageBackend(str(temp_cache_dir))
+    return BarCache(storage=storage, cache_prefix="")
 
 
 @pytest.fixture
@@ -41,16 +47,13 @@ def sample_bar_df():
 class TestBarCache:
     """Tests for BarCache."""
 
-    def test_cache_initialization(self, temp_cache_dir):
+    def test_cache_initialization(self, temp_cache_dir, cache):
         """Test cache initializes correctly."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-        assert isinstance(cache.storage, LocalStorageBackend)
+        assert cache.cache_dir is None
         assert temp_cache_dir.exists()
 
-    def test_cache_miss_returns_none(self, temp_cache_dir):
+    def test_cache_miss_returns_none(self, cache):
         """Test that cache miss returns None."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         result = cache.get(
             exchange="binance",
             symbols=["BTCUSDT"],
@@ -62,10 +65,8 @@ class TestBarCache:
 
         assert result is None
 
-    def test_cache_put_and_get(self, temp_cache_dir, sample_bar_df):
+    def test_cache_put_and_get(self, cache, sample_bar_df):
         """Test putting and getting from cache."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         cache.put(
             df=sample_bar_df,
             exchange="binance",
@@ -88,10 +89,8 @@ class TestBarCache:
         assert result is not None
         assert len(result) == len(sample_bar_df)
 
-    def test_cache_key_different_symbols(self, temp_cache_dir, sample_bar_df):
+    def test_cache_key_different_symbols(self, cache, sample_bar_df):
         """Test that different symbols produce different cache keys."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         cache.put(
             df=sample_bar_df,
             exchange="binance",
@@ -113,10 +112,8 @@ class TestBarCache:
 
         assert result is None
 
-    def test_cache_key_different_interval(self, temp_cache_dir, sample_bar_df):
+    def test_cache_key_different_interval(self, cache, sample_bar_df):
         """Test that different intervals produce different cache keys."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         cache.put(
             df=sample_bar_df,
             exchange="binance",
@@ -138,10 +135,8 @@ class TestBarCache:
 
         assert result is None
 
-    def test_cache_daily_files(self, temp_cache_dir, sample_bar_df):
+    def test_cache_daily_files(self, temp_cache_dir, cache, sample_bar_df):
         """Test that cache creates daily files."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         cache.put(
             df=sample_bar_df,
             exchange="binance",
@@ -156,10 +151,8 @@ class TestBarCache:
         assert len(cache_files) == 1
         assert "2024-01-15" in cache_files[0].name
 
-    def test_get_date_range(self, temp_cache_dir, sample_bar_df):
+    def test_get_date_range(self, cache, sample_bar_df):
         """Test getting data for a date range."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         for day in range(1, 4):
             cache.put(
                 df=sample_bar_df,
@@ -184,10 +177,8 @@ class TestBarCache:
         assert result is not None
         assert len(result) == len(sample_bar_df) * 3
 
-    def test_get_date_range_partial_miss(self, temp_cache_dir, sample_bar_df):
+    def test_get_date_range_partial_miss(self, cache, sample_bar_df):
         """Test that partial cache miss returns None for range."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         for day in [1, 3]:
             cache.put(
                 df=sample_bar_df,
@@ -211,10 +202,8 @@ class TestBarCache:
 
         assert result is None
 
-    def test_clear_cache(self, temp_cache_dir, sample_bar_df):
+    def test_clear_cache(self, cache, sample_bar_df):
         """Test clearing the cache."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         cache.put(
             df=sample_bar_df,
             exchange="binance",
