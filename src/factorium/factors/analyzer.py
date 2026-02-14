@@ -243,8 +243,13 @@ class FactorAnalyzer:
 
     def _ensure_data_prepared(self, periods: list[int] | None = None, price_col: str | None = None) -> None:
         """Ensure data is prepared. Auto-calls prepare_data() if needed."""
-        if not hasattr(self, "_clean_data"):
-            logger.info("Data not prepared. Auto-calling prepare_data()...")
+        has_missing_period = bool(
+            periods
+            and hasattr(self, "_clean_data")
+            and any(f"period_{p}" not in self._clean_data.columns for p in periods)
+        )
+        if not hasattr(self, "_clean_data") or has_missing_period:
+            logger.info("Data not prepared or missing requested periods. Auto-calling prepare_data()...")
             self.prepare_data(periods=periods, price_col=price_col)
 
     def analyze(self, price_col: str = "close", periods: int | list[int] = 1) -> FactorAnalysisResult:

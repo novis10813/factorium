@@ -475,3 +475,17 @@ def test_analyze_empty_periods_list_raises_error(sample_data):
 
     with pytest.raises(ValueError, match="Periods list cannot be empty"):
         analyzer.analyze(periods=[])
+
+
+def test_ensure_data_prepared_reprepare_when_period_missing(sample_data):
+    agg = AggBar(sample_data)
+    factor = agg["my_factor"]
+    prices = agg["close"]
+    analyzer = FactorAnalyzer(factor, prices)
+
+    analyzer.prepare_data(periods=[1])
+    assert "period_1" in analyzer._clean_data.columns
+    assert "period_5" not in analyzer._clean_data.columns
+
+    analyzer._ensure_data_prepared(periods=[1, 5])
+    assert "period_5" in analyzer._clean_data.columns
