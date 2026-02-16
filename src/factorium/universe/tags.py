@@ -8,8 +8,8 @@ from pathlib import Path
 
 import aiohttp
 
+from ..constants import COINGECKO_BASE_URL
 
-COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 logger = logging.getLogger(__name__)
 
 

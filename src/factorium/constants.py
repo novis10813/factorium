@@ -15,9 +15,13 @@ SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60
 MIN_PERIODS_PER_YEAR = 1.0
 MAX_PERIODS_PER_YEAR = 365.25 * 24 * 60  # Minutes in a year
 
+# External API URLs
+COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
+
 __all__ = [
     "EPSILON",
     "SECONDS_PER_YEAR",
     "MIN_PERIODS_PER_YEAR",
     "MAX_PERIODS_PER_YEAR",
+    "COINGECKO_BASE_URL",
 ]
