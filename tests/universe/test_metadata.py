@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import factorium.data.loader as data_loader
+from factorium.universe import metadata as metadata_module
 from factorium.universe.metadata import MetadataProvider
 
 
@@ -118,7 +118,7 @@ def test_metadata_fetch_uses_run_async(monkeypatch: pytest.MonkeyPatch) -> None:
         return expected
 
     monkeypatch.setattr(provider, "fetch_async", fake_fetch_async)
-    monkeypatch.setattr(data_loader, "_run_async", fake_run_async)
+    monkeypatch.setattr(metadata_module, "_run_async", fake_run_async)
 
     out = provider.fetch()
     assert out == expected

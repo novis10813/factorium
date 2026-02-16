@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import factorium.data.loader as data_loader
+from factorium.universe import tags as tags_module
 from factorium.universe.tags import TagProvider
 
 
@@ -105,7 +106,7 @@ def test_tags_fetch_uses_run_async(monkeypatch: pytest.MonkeyPatch) -> None:
         return expected
 
     monkeypatch.setattr(provider, "fetch_async", fake_fetch_async)
-    monkeypatch.setattr(data_loader, "_run_async", fake_run_async)
+    monkeypatch.setattr(tags_module, "_run_async", fake_run_async)
 
     out = provider.fetch(symbols=["BTC"])
     assert out == expected

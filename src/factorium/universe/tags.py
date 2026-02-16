@@ -9,6 +9,8 @@ from pathlib import Path
 import aiohttp
 
 from ..constants import COINGECKO_BASE_URL
+from ..data.loader import _run_async
+
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +93,6 @@ class TagProvider:
         return {sym: result.get(sym, []) for sym in requested if sym in result}
 
     def fetch(self, symbols: list[str] | None = None) -> dict[str, list[str]]:
-        from ..data.loader import _run_async
-
         return _run_async(self.fetch_async(symbols=symbols))
 
     def _load_cache(self) -> dict[str, list[str]] | None:
