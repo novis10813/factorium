@@ -20,6 +20,13 @@ def temp_cache_dir():
 
 
 @pytest.fixture
+def cache(temp_cache_dir):
+    """Create cache using non-deprecated storage API."""
+    storage = LocalStorageBackend(str(temp_cache_dir))
+    return BarCache(storage=storage, cache_prefix="")
+
+
+@pytest.fixture
 def sample_bar_df_polars():
     """Create sample bar DataFrame in Polars format."""
     return pl.DataFrame(
@@ -40,10 +47,8 @@ def sample_bar_df_polars():
 class TestBarCachePolars:
     """Tests for BarCache with Polars DataFrames."""
 
-    def test_put_and_get_polars(self, temp_cache_dir, sample_bar_df_polars):
+    def test_put_and_get_polars(self, cache, sample_bar_df_polars):
         """Test storing and retrieving Polars DataFrame from cache."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         cache.put(
             df=sample_bar_df_polars,
             exchange="binance",
@@ -68,10 +73,8 @@ class TestBarCachePolars:
         assert len(result) == len(sample_bar_df_polars)
         assert result.shape == sample_bar_df_polars.shape
 
-    def test_get_returns_none_when_not_cached(self, temp_cache_dir):
+    def test_get_returns_none_when_not_cached(self, cache):
         """Test that get returns None if data not in cache."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         result = cache.get(
             exchange="binance",
             symbols=["BTCUSDT"],
@@ -83,10 +86,8 @@ class TestBarCachePolars:
 
         assert result is None
 
-    def test_get_range_returns_polars(self, temp_cache_dir, sample_bar_df_polars):
+    def test_get_range_returns_polars(self, cache, sample_bar_df_polars):
         """Test get_range returns concatenated Polars DataFrame."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         # Store data for 3 consecutive days
         for day in range(1, 4):
             cache.put(
@@ -113,10 +114,8 @@ class TestBarCachePolars:
         assert isinstance(result, pl.DataFrame)
         assert len(result) == len(sample_bar_df_polars) * 3
 
-    def test_get_range_returns_none_if_any_missing(self, temp_cache_dir, sample_bar_df_polars):
+    def test_get_range_returns_none_if_any_missing(self, cache, sample_bar_df_polars):
         """Test get_range returns None if any day missing from range."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         # Store data for days 1 and 3, but skip day 2
         for day in [1, 3]:
             cache.put(
@@ -142,10 +141,8 @@ class TestBarCachePolars:
         # Should return None because day 2 is missing
         assert result is None
 
-    def test_put_and_get_preserves_data_types(self, temp_cache_dir):
+    def test_put_and_get_preserves_data_types(self, cache):
         """Test that data types are preserved through cache round-trip."""
-        cache = BarCache(storage=LocalStorageBackend(str(temp_cache_dir)))
-
         df = pl.DataFrame(
             {
                 "symbol": ["BTCUSDT", "ETHUSDT"],
