@@ -1,8 +1,14 @@
 # tests/storage/test_factory.py
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+try:
+    import boto3
+    has_boto3 = True
+except ImportError:
+    has_boto3 = False
 
 from factorium.storage import get_storage_backend, LocalStorageBackend
 
@@ -31,9 +37,11 @@ class TestGetStorageBackend:
         with pytest.raises(ValueError, match="Unknown backend"):
             get_storage_backend("unknown", str(temp_dir))
 
-    def test_s3_backend_placeholder(self):
-        """S3 backend should raise ImportError until implemented."""
-        # This test will be updated when S3 backend is implemented
-        # For now, just test error handling
-        with pytest.raises((ValueError, ImportError)):
-            get_storage_backend("s3", "my-bucket/path")
+    @pytest.mark.skipif(not has_boto3, reason="boto3 not installed")
+    def test_s3_backend_creates_instance(self):
+        """S3 backend should create S3StorageBackend instance."""
+        with patch("factorium.storage.s3.boto3"):
+            from factorium.storage.s3 import S3StorageBackend
+
+            backend = get_storage_backend("s3", "my-bucket/path")
+            assert isinstance(backend, S3StorageBackend)

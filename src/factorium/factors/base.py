@@ -1,14 +1,16 @@
-from typing import Union, Optional, Callable, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Union
 
 try:
     from typing import Self
 except ImportError:
-    from typing_extensions import Self
+    from typing import Self
 from abc import ABC
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 import polars as pl
-from pathlib import Path
-import numpy as np
 
 from ..constants import EPSILON
 
@@ -17,9 +19,7 @@ if TYPE_CHECKING:
 
 
 class BaseFactor(ABC):
-    def __init__(
-        self, data: Union["AggBar", pd.DataFrame, pl.DataFrame, pl.LazyFrame, Path], name: Optional[str] = None
-    ):
+    def __init__(self, data: Union["AggBar", pd.DataFrame, pl.DataFrame, pl.LazyFrame, Path], name: str | None = None):
         self._name = name or "factor"
         self._lf = self._to_lazy(data)
 
@@ -153,7 +153,7 @@ class BaseFactor(ABC):
         return self.__class__(pl_df, name)
 
     def _binary_op(
-        self, other: Union["BaseFactor", float], op_func: Callable, op_name: str, scalar_suffix: Optional[str] = None
+        self, other: Union["BaseFactor", float], op_func: Callable, op_name: str, scalar_suffix: str | None = None
     ) -> Self:
         if isinstance(other, self.__class__):
             # Use Polars LazyFrame join for factor-factor operations
@@ -343,10 +343,10 @@ class BaseFactor(ABC):
     def __ge__(self, other: Union["BaseFactor", float]) -> Self:
         return self._comparison_op(other, lambda x, y: x >= y, ">=")
 
-    def __eq__(self, other: Union["BaseFactor", float]) -> Self:
+    def __eq__(self, other: Union["BaseFactor", float]) -> Self:  # type: ignore[override]
         return self._comparison_op(other, lambda x, y: x == y, "==")
 
-    def __ne__(self, other: Union["BaseFactor", float]) -> Self:
+    def __ne__(self, other: Union["BaseFactor", float]) -> Self:  # type: ignore[override]
         return self._comparison_op(other, lambda x, y: x != y, "!=")
 
     def __len__(self) -> int:
@@ -356,4 +356,4 @@ class BaseFactor(ABC):
         which is much faster than collecting the full dataset but still
         requires execution. Avoid calling in tight loops.
         """
-        return self._lf.select(pl.len()).collect().item()
+        return int(self._lf.select(pl.len()).collect().item())

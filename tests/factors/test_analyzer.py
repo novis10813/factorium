@@ -198,8 +198,11 @@ def test_analyze_returns_dataclass(sample_data):
 
     assert isinstance(result, FactorAnalysisResult)
     assert result.factor_name == "my_factor"
-    assert result.periods == 1
-    assert "mean_ic" in result.ic_summary
+    # periods is always a list now
+    assert result.periods == [1]
+    # ic_summary is always dict[int, dict[str, float]] now
+    assert 1 in result.ic_summary
+    assert "mean_ic" in result.ic_summary[1]
     assert hasattr(result, "to_dict")
 
 

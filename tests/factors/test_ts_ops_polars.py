@@ -33,7 +33,7 @@ def sample_polars_factor_data():
     - Mix of regular and edge case values
     """
     dates = pd.date_range("2025-01-01", periods=10, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     common_cols = {
         "start_time": timestamps,
@@ -73,7 +73,7 @@ def sample_polars_factor_with_nan(sample_polars_factor_data):
 def sample_polars_factor_constant():
     """Create factor data with constant values for std/var edge cases."""
     dates = pd.date_range("2025-01-01", periods=10, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     common_cols = {
         "start_time": timestamps,

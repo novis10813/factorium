@@ -20,7 +20,7 @@ def sample_pandas_df():
     """Create sample factor data as pandas DataFrame."""
     np.random.seed(42)
     dates = pd.date_range("2024-01-01", periods=20, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     data = []
     for symbol in ["BTCUSDT", "ETHUSDT"]:
@@ -537,8 +537,8 @@ class TestBaseFactor_LenOptimization:
         n_rows = 100_000
         df = pd.DataFrame(
             {
-                "start_time": pd.date_range("2020-01-01", periods=n_rows, freq="1min").astype(np.int64) // 10**6,
-                "end_time": (pd.date_range("2020-01-01", periods=n_rows, freq="1min").astype(np.int64) // 10**6)
+                "start_time": pd.date_range("2020-01-01", periods=n_rows, freq="1min").astype("datetime64[ms]").astype(np.int64),
+                "end_time": (pd.date_range("2020-01-01", periods=n_rows, freq="1min").astype("datetime64[ms]").astype(np.int64))
                 + 60000,
                 "symbol": ["A"] * n_rows,
                 "factor": np.arange(n_rows, dtype=float),

@@ -140,7 +140,7 @@ class TestBacktester:
     @pytest.fixture
     def sample_data(self):
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -246,7 +246,7 @@ class TestEdgeCases:
     def test_single_symbol_backtest(self):
         """Single asset should work without cross-sectional operations failing."""
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -306,7 +306,7 @@ class TestVectorizedBacktesterIntegration:
     def sample_data(self):
         np.random.seed(42)
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -398,7 +398,7 @@ class TestBacktesterCashHandling:
         # BTC starts cheap, becomes very expensive
         # ETH stays cheap
         dates = pd.date_range(start="2025-01-01", periods=10, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
         rows = []
         for i, ts in enumerate(timestamps):
             for symbol in ["BTC", "ETH"]:
@@ -446,7 +446,7 @@ class TestMissingPriceHandling:
     def test_missing_price_symbol_excluded_from_holdings(self):
         """Symbols with missing prices should be excluded from target holdings."""
         dates = pd.date_range(start="2025-01-01", periods=10, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -504,7 +504,7 @@ class TestLegacyBacktester:
     @pytest.fixture
     def sample_data(self):
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):

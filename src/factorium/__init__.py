@@ -29,10 +29,10 @@ Example:
     >>> ranked = momentum.rank()
 """
 
-from .factors.core import Factor
-from .factors.base import BaseFactor
 from .aggbar import AggBar
 from .data import BinanceDataLoader
+from .factors.base import BaseFactor
+from .factors.core import Factor
 from .research import ResearchSession
 from .universe import (
     Checklist,
