@@ -54,6 +54,7 @@ nav:
     - 五分鐘教學: getting-started/quickstart.md
   - 使用指南:
     - Bar 聚合: user-guide/bar.md
+    - Universe 與 Checklist: user-guide/universe.md
     - Factor 因子: user-guide/factor.md
     - 表達式語法: user-guide/parser.md
     - 因子分析: user-guide/analyzer.md
@@ -61,3 +62,4 @@ nav:
   - 開發者:
     - 測試策略: dev/testing.md
     - 回歸運算子設計: dev/regression-operators.md
+    - Safe Operations 語義: dev/safe-operations.md

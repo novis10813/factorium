@@ -1,17 +1,18 @@
 from .backtester import (
     IterativeBacktester as LegacyBacktester,
+)
+from .backtester import (
     IterativeBacktestResult as LegacyBacktestResult,
+)
+from .constraints import (
+    LongOnlyConstraint,
+    MarketNeutralConstraint,
+    MaxGrossExposureConstraint,
+    MaxPositionConstraint,
+    WeightConstraint,
 )
 from .metrics import calculate_metrics
 from .portfolio import Portfolio
-from .vectorized import VectorizedBacktester, BacktestResult
-from .constraints import (
-    WeightConstraint,
-    MaxPositionConstraint,
-    LongOnlyConstraint,
-    MaxGrossExposureConstraint,
-    MarketNeutralConstraint,
-)
 from .utils import (
     MAX_PERIODS_PER_YEAR,
     MIN_PERIODS_PER_YEAR,
@@ -21,6 +22,7 @@ from .utils import (
     normalize_weights,
     parse_frequency_to_seconds,
 )
+from .vectorized import BacktestResult, VectorizedBacktester
 
 # Backward compatibility: Backtester is now an alias for VectorizedBacktester
 Backtester = VectorizedBacktester

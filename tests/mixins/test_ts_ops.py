@@ -317,8 +317,8 @@ def ts_ops_mixin_factory():
 
         df = pd.DataFrame(
             {
-                "start_time": series.index.view(np.int64) // 10**6,
-                "end_time": (series.index.view(np.int64) // 10**6) + 60000,
+                "start_time": series.index.astype("datetime64[ms]").astype(np.int64),
+                "end_time": (series.index.astype("datetime64[ms]").astype(np.int64)) + 60000,
                 "symbol": symbol,
                 "factor": series.values,
             }

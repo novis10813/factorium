@@ -1,16 +1,17 @@
 """Vectorized backtester using Polars for performance."""
 
 from dataclasses import dataclass
-from typing import Optional, Literal, Dict, Any, Union
+from typing import Any, Literal
+
 import numpy as np
 import pandas as pd
 import polars as pl
 
 from ..aggbar import AggBar
-from ..factors.core import Factor
 from ..constants import EPSILON
-from .utils import frequency_to_periods_per_year
+from ..factors.core import Factor
 from .metrics import calculate_metrics
+from .utils import frequency_to_periods_per_year
 
 
 @dataclass
@@ -19,7 +20,7 @@ class BacktestResult:
 
     equity_curve: pl.DataFrame  # columns: [end_time, total_value]
     returns: pl.DataFrame  # columns: [end_time, return]
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
     trades: pl.DataFrame  # columns: [end_time, symbol, qty, price, cost]
     portfolio_history: pl.DataFrame  # columns: [end_time, cash, market_value, total_value]
 
@@ -40,7 +41,7 @@ class BacktestResultPandas:
 
     equity_curve: pd.DataFrame
     returns: pd.DataFrame
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
     trades: pd.DataFrame
     portfolio_history: pd.DataFrame
 
@@ -50,14 +51,15 @@ class VectorizedBacktester:
 
     def __init__(
         self,
-        prices: Union[AggBar, pl.DataFrame],
-        signal: Union[Factor, pl.DataFrame],
+        prices: AggBar | pl.DataFrame,
+        signal: Factor | pl.DataFrame,
         entry_price: str = "close",
-        transaction_cost: Union[float, tuple[float, float]] = 0.0003,
+        transaction_cost: float | tuple[float, float] = 0.0003,
         initial_capital: float = 10000.0,
         neutralization: Literal["market", "none"] = "market",
         frequency: str = "1h",
-        constraints: Optional[list] = None,
+        constraints: list | None = None,
+        mask: str | None = None,
     ):
         """
         Initialize the vectorized backtester.
@@ -86,23 +88,28 @@ class VectorizedBacktester:
         self.periods_per_year = frequency_to_periods_per_year(frequency)
         self._periods_per_year = self.periods_per_year  # Alias for backward compatibility
         self.constraints = constraints or []
+        self._mask = mask
 
         # Convert inputs to Polars DataFrames
         if isinstance(prices, AggBar):
             if entry_price not in prices.cols:
                 raise ValueError(f"entry_price '{entry_price}' not found in prices")
+            if mask is not None and mask not in prices.cols:
+                raise ValueError(f"mask '{mask}' not found in prices")
             self.prices_df = prices.to_polars()
         else:
             self.prices_df = prices
             if entry_price not in prices.columns:
                 raise ValueError(f"entry_price '{entry_price}' not found in prices")
+            if mask is not None and mask not in prices.columns:
+                raise ValueError(f"mask '{mask}' not found in prices")
 
         if isinstance(signal, Factor):
             self.signal_df = signal.lazy.collect()
         else:
             self.signal_df = signal
 
-        self._result: Optional[BacktestResult] = None
+        self._result: BacktestResult | None = None
 
     def run(self) -> BacktestResult:
         """
@@ -127,7 +134,7 @@ class VectorizedBacktester:
         self._result = self._build_result(portfolio_history, combined)
         return self._result
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """Return a summary of backtest results."""
         if self._result is None:
             raise RuntimeError("Must call run() before summary()")
@@ -144,7 +151,10 @@ class VectorizedBacktester:
     def _prepare_data(self) -> pl.DataFrame:
         """Merge prices and signals, shift signals to avoid lookahead bias."""
         # Get the entry price column
-        prices_df = self.prices_df.select(["end_time", "symbol", self.entry_price]).rename({self.entry_price: "price"})
+        price_cols = ["end_time", "symbol", self.entry_price]
+        if self._mask is not None:
+            price_cols.append(self._mask)
+        prices_df = self.prices_df.select(price_cols).rename({self.entry_price: "price"})
 
         # Prepare signal data
         signal_df = self.signal_df.select(["end_time", "symbol", "factor"]).rename({"factor": "signal"})
@@ -162,17 +172,30 @@ class VectorizedBacktester:
 
     def _calculate_weights(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate portfolio weights (cross-sectional)."""
+        signal_col = "prev_signal"
+        if self._mask is not None:
+            signal_col = "_masked_signal"
+            df = df.with_columns(
+                pl.when(pl.col(self._mask).fill_null(False))
+                .then(pl.col("prev_signal"))
+                .otherwise(None)
+                .alias(signal_col)
+            )
+
         if self.neutralization == "market":
             # Market neutral: (signal - mean) / sum(|signal - mean|)
             from .utils import neutralize_weights_polars
 
-            df = neutralize_weights_polars(df, "prev_signal", "end_time")
+            df = neutralize_weights_polars(df, signal_col, "end_time")
         else:  # long-only
             # Normalize positive signals to sum to 1
-            positive_only = pl.when(pl.col("prev_signal") > 0).then(pl.col("prev_signal")).otherwise(0.0)
+            positive_only = pl.when(pl.col(signal_col) > 0).then(pl.col(signal_col)).otherwise(0.0)
             df = df.with_columns(
                 [(positive_only / positive_only.sum().over("end_time")).fill_nan(0.0).fill_null(0.0).alias("weight")]
             )
+
+        if self._mask is not None:
+            df = df.drop("_masked_signal")
 
         # Apply constraints
         for constraint in self.constraints:
@@ -248,7 +271,7 @@ class VectorizedBacktester:
 
         return equity.select(["end_time", "cash", "market_value", "total_value"])
 
-    def _calculate_metrics(self, equity_history: pl.DataFrame) -> Dict[str, float]:
+    def _calculate_metrics(self, equity_history: pl.DataFrame) -> dict[str, float]:
         """Calculate performance metrics."""
         # Convert to pandas for metrics calculation
         equity_pd = equity_history.to_pandas()

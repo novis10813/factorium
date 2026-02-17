@@ -1,8 +1,8 @@
 """Polars-based computation engine for high-performance factor operations."""
 
-import polars as pl
-import pandas as pd
 import numpy as np
+import pandas as pd
+import polars as pl
 
 from ..constants import EPSILON
 
@@ -171,7 +171,7 @@ class PolarsEngine:
         upper_bound = pl.col(value_col).quantile(1 - limits).over(time_col)
 
         # Clip values between bounds
-        winsorize_expr = pl.col(value_col).clip(min_bound=lower_bound, max_bound=upper_bound)
+        winsorize_expr = pl.col(value_col).clip(lower_bound=lower_bound, upper_bound=upper_bound)
 
         return df.with_columns(pl.when(has_nan).then(None).otherwise(winsorize_expr).alias(value_col))
 
@@ -240,17 +240,17 @@ class PolarsEngine:
 
             try:
                 # Solve least squares: y = [x 1] * [beta alpha]^T
-                A = np.vstack([x, np.ones(len(x))]).T
-                beta_alpha, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
-                residuals = y - A @ beta_alpha
+                design_matrix = np.vstack([x, np.ones(len(x))]).T
+                beta_alpha, _, _, _ = np.linalg.lstsq(design_matrix, y, rcond=None)
+                residuals = y - design_matrix @ beta_alpha
                 batch_pd["residual"] = residuals
             except Exception:
                 batch_pd["residual"] = np.nan
 
             return batch_pd
 
-        # Apply least-squares per time period
-        result = df.map_batches(least_squares_batch, schema={**df.schema, "residual": pl.Float64})
+        # Apply least-squares per time period using group_by + map_groups
+        result = df.group_by("end_time", maintain_order=True).map_groups(least_squares_batch)
 
         # Select and rename back to factor
         result = result.select(["start_time", "end_time", "symbol", "residual"]).rename({"residual": value_col})

@@ -9,6 +9,7 @@
 - **價格資料 (`prices`)**：使用 `AggBar` 表示的多標的 OHLCV 資料，欄位至少包含  
   `["start_time", "end_time", "symbol", "open", "high", "low", "close", "volume"]`。
 - **信號因子 (`signal`)**：任何 `Factor` 物件，需與 `prices` 在 `end_time, symbol` 上對齊，通常為已做過橫截面處理的排名 / Z-score。
+- **資產池遮罩 (`mask`)**：可選欄位名稱，用來限制哪些標的在該時間點可以持倉。
 - **避免前視偏差**：回測時會使用「前一根 bar 的信號」在當前 bar 交易。
 - **向量化實作**：內部全部以 Polars 向量化計算完成，再轉成 pandas 計算績效指標。
 
@@ -80,6 +81,24 @@ pandas_result = result.to_pandas()
 print(pandas_result.equity_curve.tail())
 print(pandas_result.metrics)
 ```
+
+---
+
+## 3.1 使用 Universe / Checklist mask 限制持倉
+
+若你已經在 `AggBar` 內建立 mask 欄位（例如 `checklist_mask`），可以在回測時直接指定：
+
+```python
+bt = Backtester(
+    prices=agg,
+    signal=momentum,
+    mask="checklist_mask",
+    neutralization="market",
+)
+result = bt.run()
+```
+
+當 `mask` 為 `False` 或 `null`，該標的在該期權重會被設為 0。這能讓回測與因子分析維持同一套 Universe/Checklist 約束。
 
 ---
 
@@ -175,4 +194,3 @@ print(result.metrics)
    - 直接使用 `Backtester(prices=agg, signal=signal)`；或
    - 透過 `ResearchSession.backtest(signal)`。
 5. **查看結果**：讀取 `BacktestResult.metrics`、`equity_curve`、`trades` 等欄位，或將結果轉成 pandas 作進一步分析。
-

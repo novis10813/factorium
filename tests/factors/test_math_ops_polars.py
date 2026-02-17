@@ -19,7 +19,7 @@ def sample_pandas_df():
     """Create sample factor data as pandas DataFrame."""
     np.random.seed(42)
     dates = pd.date_range("2024-01-01", periods=20, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     data = []
     for symbol in ["BTCUSDT", "ETHUSDT"]:
@@ -59,7 +59,7 @@ def positive_factor_pandas():
     """Create factor data with positive values only."""
     np.random.seed(42)
     dates = pd.date_range("2024-01-01", periods=20, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     data = []
     for symbol in ["BTCUSDT", "ETHUSDT"]:
@@ -87,7 +87,7 @@ def mixed_factor_pandas():
     """Create factor with mixed positive/negative values and some zeros."""
     np.random.seed(42)
     dates = pd.date_range("2024-01-01", periods=20, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     data = []
     for symbol in ["BTCUSDT", "ETHUSDT"]:

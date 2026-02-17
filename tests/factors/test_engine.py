@@ -15,7 +15,7 @@ def sample_factor_df():
     n_rows = 100
 
     dates = pd.date_range("2024-01-01", periods=50, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     return pl.DataFrame(
         {

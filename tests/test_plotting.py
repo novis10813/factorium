@@ -20,7 +20,7 @@ def sample_aggbar_for_plotting():
     """
     # Generate more time points for better visualization
     dates = pd.date_range(start="2025-01-01", periods=50, freq="1h")
-    timestamps = (dates.astype(np.int64) // 10**6).astype(int)
+    timestamps = (dates.astype("datetime64[ms]").astype(np.int64)).astype(int)
     
     symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
     data_list = []

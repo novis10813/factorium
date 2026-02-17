@@ -1,7 +1,6 @@
 """Utility functions for backtesting."""
 
 import re
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -13,6 +12,14 @@ from ..constants import (
     MIN_PERIODS_PER_YEAR,
     SECONDS_PER_YEAR,
 )
+
+# Re-export constants for backward compatibility
+__all__ = [
+    "MAX_PERIODS_PER_YEAR",
+    "MIN_PERIODS_PER_YEAR",
+    "POSITION_EPSILON",
+    "SECONDS_PER_YEAR",
+]
 
 # Backward compatibility alias
 POSITION_EPSILON = EPSILON
@@ -153,10 +160,10 @@ def neutralize_weights_polars(
 
 
 def safe_divide(
-    a: Union[float, np.ndarray, pd.Series],
-    b: Union[float, np.ndarray, pd.Series],
+    a: float | np.ndarray | pd.Series,
+    b: float | np.ndarray | pd.Series,
     default: float = np.nan,
-) -> Union[float, np.ndarray, pd.Series]:
+) -> float | np.ndarray | pd.Series:
     """
     Safe division that returns default when denominator is near zero.
 
@@ -172,7 +179,7 @@ def safe_divide(
     """
     # Handle scalar
     if isinstance(b, (int, float, np.floating, np.integer)):
-        if np.isnan(b) or abs(b) <= EPSILON:
+        if np.isnan(float(b)) or abs(float(b)) <= EPSILON:
             return default
         return a / b
 

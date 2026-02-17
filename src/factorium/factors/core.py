@@ -1,17 +1,18 @@
-import pandas as pd
-import matplotlib.figure as mpl_figure
-
-from typing import Union, Optional, List, Tuple, Dict, Any, TYPE_CHECKING
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Union
+
+import matplotlib.figure as mpl_figure
+import pandas as pd
 
 from .base import BaseFactor
+from .mixins.cs_ops import CrossSectionalOpsMixin
 from .mixins.math_ops import MathOpsMixin
 from .mixins.ts_ops import TimeSeriesOpsMixin
-from .mixins.cs_ops import CrossSectionalOpsMixin
 
 if TYPE_CHECKING:
     from ..aggbar import AggBar
+    from .analyzer import FactorAnalysisResult
 
 
 class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFactor):
@@ -33,11 +34,11 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
         >>> ranked.plot(plot_type='timeseries')
     """
 
-    def __init__(self, data: Union["AggBar", pd.DataFrame, Path], name: Optional[str] = None):
+    def __init__(self, data: Union["AggBar", pd.DataFrame, Path], name: str | None = None):
         super().__init__(data, name)
 
     @classmethod
-    def from_expression(cls, expr: str, context: Dict[str, "Factor"]) -> "Factor":
+    def from_expression(cls, expr: str, context: dict[str, "Factor"]) -> "Factor":
         """
         Create a Factor from an expression string.
 
@@ -62,45 +63,53 @@ class Factor(CrossSectionalOpsMixin, TimeSeriesOpsMixin, MathOpsMixin, BaseFacto
 
     def eval(
         self,
-        prices: "Factor",
-        periods: List[int] = [1, 5, 10],
+        prices: Union["Factor", "AggBar"],
+        periods: int = 1,  # MVP 僅支援單一窗口
         quantiles: int = 5,
-        save_path: Optional[str] = None,
+        output_dir: str | None = None,
+        price_col: str = "close",
+        mask: str | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> "FactorAnalysisResult":
         """
-        Run a full evaluation report for the factor.
+        Evaluate factor's predictive power (Evaluation Layer).
 
         Args:
-            prices: A Factor object containing price data (e.g., close prices)
-            periods: List of holding periods to evaluate (e.g., [1, 5, 10] days)
-            quantiles: Number of quantiles for layer testing
-            save_path: Path to save the evaluation report plot (e.g., 'report.png')
-            **kwargs: Additional arguments passed to the evaluator
+            prices: Price data (Factor or AggBar)
+            periods: Prediction horizon (currently only supports single int)
+            quantiles: Number of quantiles for layer analysis (default 5)
+            output_dir: Experiment output directory (creates timestamped folder if specified)
+            price_col: Price column name (default "close")
 
         Returns:
-            Dictionary containing evaluation metrics:
-            - ic_mean: Mean IC for each period
-            - ic_ir: IC Information Ratio for each period
-            - turnover_mean: Average factor turnover
-            - layer_returns: Average returns for each quantile
-            - spread: Long-short spread (Top - Bottom quantile)
+            FactorAnalysisResult: Complete evaluation metrics including IC, ICIR, t-stat,
+                                  turnover, quantile returns, and cumulative returns
 
         Example:
-            >>> factor.eval(prices=close_factor, periods=[1, 5, 20], save_path='eval.png')
+            >>> momentum = ts_returns(close, 20)
+            >>> result = momentum.eval(prices, output_dir="./experiments")
+            >>> print(result.ic_summary)
+            {'mean_ic': 0.05, 'ic_ir': 1.2, 't_stat': 3.5, ...}
         """
-        from .evaluation import FactorEvaluator
+        from .analyzer import FactorAnalyzer
 
-        evaluator = FactorEvaluator(self, prices)
-        return evaluator.run_full_report(periods=periods, quantiles=quantiles, save_path=save_path, **kwargs)
+        analyzer = FactorAnalyzer(factor=self, prices=prices, quantiles=quantiles, mask=mask)
+
+        result = analyzer.analyze(price_col=price_col, periods=periods)
+
+        # Save results if output directory specified
+        if output_dir:
+            result.save(output_dir)
+
+        return result
 
     def plot(
         self,
         plot_type: str = "timeseries",
-        symbols: Optional[List[str]] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        figsize: Tuple[int, int] = (12, 6),
+        symbols: list[str] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        figsize: tuple[int, int] = (12, 6),
         **kwargs,
     ) -> mpl_figure.Figure:
         """
