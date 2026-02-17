@@ -1,9 +1,10 @@
 try:
     from typing import Self
 except ImportError:
-    from typing import Self
+    from typing_extensions import Self
 
 import numpy as np
+import pandas as pd
 import polars as pl
 from scipy.stats import cauchy, norm, uniform
 
@@ -495,9 +496,8 @@ class TimeSeriesOpsMixin:
         std_x = pl.col("factor").rolling_std(window_size=window, min_samples=window, ddof=1).over("symbol")
         std_y = pl.col("factor_y").rolling_std(window_size=window, min_samples=window, ddof=1).over("symbol")
 
-        corr_expr: pl.Expr = (
-            pl.when((std_x <= EPSILON) | (std_y <= EPSILON)).then(pl.lit(None)).otherwise(cov_xy / (std_x * std_y))
-        )
+        corr_expr = pl.when((std_x <= EPSILON) | (std_y <= EPSILON))
+        corr_expr = corr_expr.then(pl.lit(None)).otherwise(cov_xy / (std_x * std_y))
         corr_expr = pl.when(nan_in_window > 0).then(pl.lit(None)).otherwise(corr_expr)
 
         result_lf = joined.with_columns(corr_expr.alias("factor")).drop("factor_y")

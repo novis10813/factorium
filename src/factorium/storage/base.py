@@ -2,6 +2,7 @@
 """Storage backend abstraction layer."""
 
 from abc import ABC, abstractmethod
+from typing import List
 
 import polars as pl
 
@@ -34,7 +35,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    def glob(self, pattern: str) -> list[str]:
+    def glob(self, pattern: str) -> List[str]:
         """List files matching a glob pattern."""
         ...
 

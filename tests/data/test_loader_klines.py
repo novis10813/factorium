@@ -114,7 +114,7 @@ class TestLoadKlines:
 
     def test_returns_aggbar_for_klines(self, sample_klines_data):
         """Test that load_aggbar returns AggBar instance for klines."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(
@@ -132,7 +132,7 @@ class TestLoadKlines:
 
     def test_klines_has_all_columns(self, sample_klines_data):
         """Test that klines data has all expected columns."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(
@@ -164,7 +164,7 @@ class TestLoadKlines:
 
     def test_klines_bypasses_aggregation(self, sample_klines_data):
         """Test that klines loading bypasses BarAggregator."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch("factorium.data.loader.BarAggregator") as MockAggregator:
             mock_agg_instance = MockAggregator.return_value
@@ -192,7 +192,7 @@ class TestLoadKlines:
 
     def test_klines_loads_multiple_symbols(self, sample_klines_data):
         """Test loading klines for multiple symbols."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(
@@ -210,7 +210,7 @@ class TestLoadKlines:
 
     def test_klines_resample_to_5m(self, sample_klines_data):
         """Test resampling 1m klines to 5m."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result_1m = loader.load_aggbar(
@@ -240,7 +240,7 @@ class TestLoadKlines:
 
     def test_klines_resample_to_1h(self, sample_klines_data):
         """Test resampling 1m klines to 1h."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result_1m = loader.load_aggbar(
@@ -270,7 +270,7 @@ class TestLoadKlines:
 
     def test_klines_raises_on_non_time_bar_type(self, sample_klines_data):
         """Test that klines raises error for non-time bar types."""
-        loader = BinanceDataLoader(path=sample_klines_data)
+        loader = BinanceDataLoader(base_path=sample_klines_data)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             with pytest.raises(ValueError, match="only supports bar_type='time'"):
@@ -289,7 +289,7 @@ class TestLoadKlines:
     def test_load_aggbar_klines_auto_detects_timestamp_unit(self, sample_klines_data_microseconds):
         """Verify klines loading auto-detects and handles microsecond timestamps."""
         tmpdir = sample_klines_data_microseconds
-        loader = BinanceDataLoader(path=tmpdir)
+        loader = BinanceDataLoader(base_path=tmpdir)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(
@@ -310,7 +310,7 @@ class TestLoadKlines:
         before resampling, which assumes millisecond timestamps.
         """
         tmpdir = sample_klines_data_microseconds
-        loader = BinanceDataLoader(path=tmpdir)
+        loader = BinanceDataLoader(base_path=tmpdir)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             # Load 1m data
@@ -346,7 +346,7 @@ class TestLoadKlines:
     def test_load_aggbar_klines_timestamps_normalized_to_ms(self, sample_klines_data_microseconds):
         """Verify that output timestamps are normalized to milliseconds."""
         tmpdir = sample_klines_data_microseconds
-        loader = BinanceDataLoader(path=tmpdir)
+        loader = BinanceDataLoader(base_path=tmpdir)
 
         with patch.object(loader, "_check_all_symbols_exist", return_value=True):
             result = loader.load_aggbar(

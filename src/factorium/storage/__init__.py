@@ -1,17 +1,8 @@
 # src/factorium/storage/__init__.py
 """Storage backend abstraction layer."""
 
-from typing import TYPE_CHECKING
-
 from .base import StorageBackend
 from .local import LocalStorageBackend
-
-# Optional S3 backend
-S3StorageBackend: type | None = None
-try:
-    from .s3 import S3StorageBackend  # type: ignore[no-redef]
-except ImportError:
-    pass
 
 
 def get_storage_backend(backend: str = "local", path: str = "./Data") -> StorageBackend:
@@ -36,6 +27,7 @@ def get_storage_backend(backend: str = "local", path: str = "./Data") -> Storage
     if backend == "local":
         return LocalStorageBackend(path)
     elif backend == "s3":
+        # S3 backend will be implemented in Task 4
         try:
             from .s3 import S3StorageBackend
         except ImportError:
@@ -49,4 +41,4 @@ def get_storage_backend(backend: str = "local", path: str = "./Data") -> Storage
         raise ValueError(f"Unknown backend: {backend}. Supported: 'local', 's3'")
 
 
-__all__ = ["StorageBackend", "LocalStorageBackend", "S3StorageBackend", "get_storage_backend"]
+__all__ = ["StorageBackend", "LocalStorageBackend", "get_storage_backend"]

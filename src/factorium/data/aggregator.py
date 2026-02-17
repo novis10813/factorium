@@ -1,21 +1,13 @@
 """DuckDB-based bar aggregator for high-performance OHLCV aggregation."""
 
 import logging
-from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
 
 import duckdb
 import polars as pl
 
 from .adapters.base import ColumnMapping
 
-if TYPE_CHECKING:
-    from .metadata import AggBarMetadata
-
 logger = logging.getLogger(__name__)
-
-# Type alias for DuckDB connection configurator
-DuckDBConfigurator = Callable[[duckdb.DuckDBPyConnection], None]
 
 
 class BarAggregator:
@@ -28,31 +20,7 @@ class BarAggregator:
     - Memory efficient: aggregation happens in DuckDB
     - Fast: uses DuckDB's vectorized execution engine
     - Scalable: handles large datasets that don't fit in memory
-
-    Args:
-        duckdb_configurator: Optional callback to configure DuckDB connection
-                             (e.g., for S3 credentials). Called before queries.
     """
-
-    def __init__(self, duckdb_configurator: DuckDBConfigurator | None = None):
-        """Initialize the aggregator.
-
-        Args:
-            duckdb_configurator: Optional function to configure DuckDB connection.
-                                 Used for S3 backends to set credentials/endpoint.
-        """
-        self._duckdb_configurator = duckdb_configurator
-
-    def _get_connection(self) -> duckdb.DuckDBPyConnection:
-        """Get a configured DuckDB connection.
-
-        Returns:
-            A DuckDB connection, optionally configured via the configurator.
-        """
-        conn = duckdb.connect()
-        if self._duckdb_configurator:
-            self._duckdb_configurator(conn)
-        return conn
 
     def _compute_metadata(self, df: pl.DataFrame) -> "AggBarMetadata":
         """Compute metadata from aggregated DataFrame.
@@ -75,8 +43,8 @@ class BarAggregator:
 
         return AggBarMetadata(
             symbols=symbols,
-            min_time=cast(int, min_time),
-            max_time=cast(int, max_time),
+            min_time=min_time,
+            max_time=max_time,
             num_rows=num_rows,
         )
 
@@ -190,7 +158,7 @@ class BarAggregator:
         """
 
         try:
-            with self._get_connection() as conn:
+            with duckdb.connect() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
@@ -300,7 +268,7 @@ class BarAggregator:
         """
 
         try:
-            with self._get_connection() as conn:
+            with duckdb.connect() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
@@ -387,25 +355,25 @@ class BarAggregator:
             -- Recursive CTE to compute greedy bar assignments (Greedy Packing algorithm)
             greedy AS (
                 -- Base case: first row
-                SELECT
+                SELECT 
                     seq,
                     volume,
                     volume AS running_volume,
                     CAST(0 AS BIGINT) AS bar_id
                 FROM numbered
                 WHERE seq = 1
-
+                
                 UNION ALL
-
+                
                 -- Recursive case: process remaining rows
                 SELECT
                     r.seq,
                     r.volume,
-                    CASE
+                    CASE 
                         WHEN g.running_volume >= {interval_volume} THEN r.volume  -- Reset after threshold
                         ELSE g.running_volume + r.volume                          -- Continue accumulating
                     END AS running_volume,
-                    CASE
+                    CASE 
                         WHEN g.running_volume >= {interval_volume} THEN g.bar_id + 1  -- New bar
                         ELSE g.bar_id                                                  -- Same bar
                     END AS bar_id
@@ -445,7 +413,7 @@ class BarAggregator:
         """
 
         try:
-            with self._get_connection() as conn:
+            with duckdb.connect() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata
@@ -530,25 +498,25 @@ class BarAggregator:
             -- Recursive CTE to compute greedy bar assignments (Greedy Packing algorithm)
             greedy AS (
                 -- Base case: first row
-                SELECT
+                SELECT 
                     seq,
                     dollar_volume,
                     dollar_volume AS running_dollar,
                     CAST(0 AS BIGINT) AS bar_id
                 FROM numbered
                 WHERE seq = 1
-
+                
                 UNION ALL
-
+                
                 -- Recursive case: process remaining rows
                 SELECT
                     r.seq,
                     r.dollar_volume,
-                    CASE
+                    CASE 
                         WHEN g.running_dollar >= {interval_dollar} THEN r.dollar_volume  -- Reset after threshold
                         ELSE g.running_dollar + r.dollar_volume                          -- Continue accumulating
                     END AS running_dollar,
-                    CASE
+                    CASE 
                         WHEN g.running_dollar >= {interval_dollar} THEN g.bar_id + 1  -- New bar
                         ELSE g.bar_id                                                  -- Same bar
                     END AS bar_id
@@ -588,7 +556,7 @@ class BarAggregator:
         """
 
         try:
-            with self._get_connection() as conn:
+            with duckdb.connect() as conn:
                 df = conn.execute(query).pl()
             metadata = self._compute_metadata(df)
             return df, metadata

@@ -1,14 +1,12 @@
-import logging
-from dataclasses import dataclass
-from typing import Any
-
-import matplotlib.figure as mpl_figure
-import numpy as np
 import pandas as pd
 import polars as pl
-
-from ..aggbar import AggBar
+import numpy as np
+import logging
+from dataclasses import dataclass
+from typing import Union, List, Optional, Dict, Any
 from .core import Factor
+from ..aggbar import AggBar
+import matplotlib.figure as mpl_figure
 
 logger = logging.getLogger(__name__)
 
@@ -20,30 +18,23 @@ class FactorAnalysisResult:
 
     Attributes:
         factor_name: Name of the analyzed factor
-        periods: Analysis periods (forward return horizons) - always a list
+        periods: Analysis periods (forward return horizons)
         quantiles: Number of quantiles used
         ic_series: Information Coefficient time series
-        ic_summary: Summary statistics of IC, keyed by period
-            Dict[int, Dict[str, float]] with mean_ic, ic_std, ic_ir, t-stat
-        turnover_series: Turnover time series (1 - rank autocorrelation)
-        turnover_mean: Average turnover across all periods
-        quantile_returns: Mean returns by quantile, keyed by period
-            Dict[int, pd.DataFrame]
+        ic_summary: Summary statistics of IC (mean, std, ir, t-stat)
+        quantile_returns: Mean returns by quantile
         cumulative_returns: Cumulative returns by quantile (if available)
-            Dict[int, pd.DataFrame] or None
     """
 
     factor_name: str
-    periods: list[int]
+    periods: int
     quantiles: int
     ic_series: pd.DataFrame
-    ic_summary: dict[int, dict[str, float]]
-    turnover_series: pd.Series
-    turnover_mean: float
-    quantile_returns: dict[int, pd.DataFrame]
-    cumulative_returns: dict[int, pd.DataFrame] | None = None
+    ic_summary: Dict[str, float]
+    quantile_returns: pd.DataFrame
+    cumulative_returns: Optional[pd.DataFrame] = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
         return {
             "factor_name": self.factor_name,
@@ -51,168 +42,18 @@ class FactorAnalysisResult:
             "quantiles": self.quantiles,
             "ic_series": self.ic_series,
             "ic_summary": self.ic_summary,
-            "turnover_series": self.turnover_series,
-            "turnover_mean": self.turnover_mean,
             "quantile_returns": self.quantile_returns,
             "cumulative_returns": self.cumulative_returns,
         }
 
     def __repr__(self) -> str:
-        lines = [f"FactorAnalysisResult: {self.factor_name}"]
-        lines.append(f"  Periods: {self.periods}, Quantiles: {self.quantiles}")
-        for p in self.periods:
-            ic = self.ic_summary.get(p, {})
-            lines.append(f"  Period {p}: IC={ic.get('mean_ic', 0):.4f}, IR={ic.get('ic_ir', 0):.4f}")
-        lines.append(f"  Turnover: {self.turnover_mean:.4f}")
-        return "\n".join(lines) + "\n"
-
-    def save(self, output_dir: str) -> None:
-        """
-        Save analysis results to directory with timestamp.
-
-        Creates structure (single horizon):
-        {output_dir}/
-        └── YYYYMMDD_HHMMSS_{factor_name}/
-            ├── config.json
-            ├── ic_series.csv
-            ├── ic_summary.csv
-            ├── turnover.csv
-            ├── quantile_returns.csv
-            ├── cumulative_returns.csv
-            └── plots/
-                ├── ic_distribution.png
-                ├── ic_timeseries.png
-                ├── quantile_returns.png
-                └── cumulative_returns.png
-
-        Multi-horizon structure (periods=[1, 5, 20]):
-        {output_dir}/
-        └── YYYYMMDD_HHMMSS_{factor_name}/
-            ├── config.json
-            ├── ic_series.csv                   # columns: period_1, period_5, period_20
-            ├── ic_summary.csv                  # rows indexed by period
-            ├── turnover.csv
-            ├── quantile_returns_period_1.csv   # per-period files
-            ├── quantile_returns_period_5.csv
-            ├── quantile_returns_period_20.csv
-            ├── cumulative_returns_period_1.csv
-            ├── cumulative_returns_period_5.csv
-            ├── cumulative_returns_period_20.csv
-            └── plots/
-                ├── ic_distribution.png
-                ├── ic_timeseries.png
-                ├── ic_decay.png                # IC decay curve (multi-horizon only)
-                ├── quantile_returns_period_1.png
-                ├── quantile_returns_period_5.png
-                ├── quantile_returns_period_20.png
-                ├── cumulative_returns_period_1.png
-                ├── cumulative_returns_period_5.png
-                └── cumulative_returns_period_20.png
-
-        Args:
-            output_dir: Base directory for experiment outputs
-        """
-        import json
-        from datetime import datetime
-        from pathlib import Path
-
-        import matplotlib.pyplot as plt
-
-        from .plotting_analyzer import FactorAnalyzerPlotter
-
-        # Create timestamped folder
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        folder_name = f"{timestamp}_{self.factor_name}"
-        exp_path = Path(output_dir) / folder_name
-        exp_path.mkdir(parents=True, exist_ok=True)
-
-        # Create plots subdirectory
-        plots_path = exp_path / "plots"
-        plots_path.mkdir(exist_ok=True)
-
-        # Save CSV files
-        self.ic_series.to_csv(exp_path / "ic_series.csv")
-
-        # Convert ic_summary to DataFrame for CSV (always dict[int, dict[str, float]] now)
-        ic_summary_df = pd.DataFrame(self.ic_summary).T
-        ic_summary_df.index.name = "period"
-        ic_summary_df.to_csv(exp_path / "ic_summary.csv")
-
-        self.turnover_series.to_csv(exp_path / "turnover.csv", header=True)
-
-        # Handle quantile_returns (always dict[int, pd.DataFrame] now)
-        for p, df in self.quantile_returns.items():
-            df.to_csv(exp_path / f"quantile_returns_period_{p}.csv")
-
-        if self.cumulative_returns is not None:
-            # Always dict[int, pd.DataFrame] now
-            for p, df in self.cumulative_returns.items():
-                df.to_csv(exp_path / f"cumulative_returns_period_{p}.csv")
-
-        # Save plots
-        plotter = FactorAnalyzerPlotter()
-
-        # IC time series plot
-        try:
-            fig_ic_ts = plotter.plot_ic_ts(self.ic_series)
-            fig_ic_ts.savefig(plots_path / "ic_timeseries.png", dpi=150, bbox_inches="tight")
-            plt.close(fig_ic_ts)
-        except Exception as e:
-            logger.warning(f"Failed to generate IC timeseries plot: {e}")
-
-        # IC distribution plot
-        try:
-            fig_ic_hist = plotter.plot_ic_hist(self.ic_series)
-            fig_ic_hist.savefig(plots_path / "ic_distribution.png", dpi=150, bbox_inches="tight")
-            plt.close(fig_ic_hist)
-        except Exception as e:
-            logger.warning(f"Failed to generate IC distribution plot: {e}")
-
-        # Quantile returns plot (always per-period now)
-        for p, df in self.quantile_returns.items():
-            try:
-                fig_qret = plotter.plot_quantile_returns(df)
-                fig_qret.savefig(plots_path / f"quantile_returns_period_{p}.png", dpi=150, bbox_inches="tight")
-                plt.close(fig_qret)
-            except Exception as e:
-                logger.warning(f"Failed to generate quantile returns plot for period {p}: {e}")
-
-        # Cumulative returns plot (if available, always per-period now)
-        if self.cumulative_returns is not None:
-            for p, df in self.cumulative_returns.items():
-                try:
-                    fig_cumret = plotter.plot_cumulative_returns(df)
-                    fig_cumret.savefig(plots_path / f"cumulative_returns_period_{p}.png", dpi=150, bbox_inches="tight")
-                    plt.close(fig_cumret)
-                except Exception as e:
-                    logger.warning(f"Failed to generate cumulative returns plot for period {p}: {e}")
-
-        # IC decay plot (multi-horizon only)
-        if isinstance(self.periods, list) and len(self.periods) > 1:
-            try:
-                fig_decay = plotter.plot_ic_decay(self.ic_summary)
-                fig_decay.savefig(plots_path / "ic_decay.png", dpi=150, bbox_inches="tight")
-                plt.close(fig_decay)
-            except Exception as e:
-                logger.warning(f"Failed to generate IC decay plot: {e}")
-
-        # Save config.json
-        config = {
-            "factor_name": self.factor_name,
-            "periods": self.periods,
-            "quantiles": self.quantiles,
-            "created_at": datetime.now().isoformat(),
-            "data_range": {
-                "start": str(self.ic_series.index.min()),
-                "end": str(self.ic_series.index.max()),
-                "n_observations": len(self.ic_series),
-            },
-        }
-
-        with open(exp_path / "config.json", "w") as f:
-            json.dump(config, f, indent=2)
-
-        logger.info(f"Results saved to {exp_path}")
+        ic = self.ic_summary
+        return f"""FactorAnalysisResult: {self.factor_name}
+  Periods: {self.periods}, Quantiles: {self.quantiles}
+  Mean IC: {ic.get("mean_ic", 0):.4f}
+  IC Std: {ic.get("ic_std", 0):.4f}
+  IC IR: {ic.get("ic_ir", 0):.4f}
+"""
 
 
 class FactorAnalyzer:
@@ -229,12 +70,7 @@ class FactorAnalyzer:
         self._mask = mask
         if isinstance(prices, AggBar):
             try:
-                close_col = prices["close"]
-                if isinstance(close_col, Factor):
-                    self.prices = close_col
-                else:
-                    # close column is not a Factor (AggBar), skip
-                    self.prices = None
+                self.prices = prices["close"]
             except KeyError:
                 # If 'close' is not there, we'll wait for price_col in prepare_data
                 self.prices = None
@@ -256,71 +92,45 @@ class FactorAnalyzer:
         """
         Run full factor analysis.
 
-        Args:
-            price_col: Column name for prices.
-            periods: Single period (int) or list of periods for multi-horizon analysis.
-
         Returns:
             FactorAnalysisResult with IC series, summary, and quantile returns
-
-        Raises:
-            ValueError: If periods is an empty list.
         """
-        # Normalize periods to list for internal processing
-        periods_list = [periods] if isinstance(periods, int) else periods
-
-        # Validate periods
-        if not periods_list:
-            raise ValueError("Periods list cannot be empty.")
-
         # Prepare data
-        self.prepare_data(price_col=price_col, periods=periods_list)
+        self.prepare_data(price_col=price_col, periods=[periods])
 
         # Calculate IC
         ic_series = self.calculate_ic()
         ic_summary_df = self.calculate_ic_summary()
 
-        # Build ic_summary - always use dict[int, dict[str, float]] format
-        ic_summary: dict[int, dict[str, float]] = {}
-        for p in periods_list:
-            col = f"period_{p}"
-            ic_summary[p] = {
-                "mean_ic": float(ic_summary_df.loc["mean", col]) if col in ic_summary_df.columns else 0.0,
-                "ic_std": float(ic_summary_df.loc["std", col]) if col in ic_summary_df.columns else 0.0,
-                "ic_ir": float(ic_summary_df.loc["ic_ir", col]) if col in ic_summary_df.columns else 0.0,
-                "t-stat": float(ic_summary_df.loc["t-stat", col]) if col in ic_summary_df.columns else 0.0,
-            }
-
-        # Calculate quantile returns - always use dict[int, pd.DataFrame] format
-        quantile_returns: dict[int, pd.DataFrame] = {
-            p: self.calculate_quantile_returns(quantiles=self.quantiles, period=p) for p in periods_list
+        # Convert IC summary to dict for single period as expected by FactorAnalysisResult
+        col = f"period_{periods}"
+        ic_summary = {
+            "mean_ic": ic_summary_df.loc["mean", col] if col in ic_summary_df.columns else 0.0,
+            "ic_std": ic_summary_df.loc["std", col] if col in ic_summary_df.columns else 0.0,
+            "ic_ir": ic_summary_df.loc["ic_ir", col] if col in ic_summary_df.columns else 0.0,
+            "t-stat": ic_summary_df.loc["t-stat", col] if col in ic_summary_df.columns else 0.0,
         }
 
-        # Calculate cumulative returns (optional) - always use dict[int, pd.DataFrame] format
+        # Calculate quantile returns
+        quantile_returns = self.calculate_quantile_returns(quantiles=self.quantiles, period=periods)
+
+        # Calculate cumulative returns (optional)
         try:
-            cumulative_returns: dict[int, pd.DataFrame] | None = {
-                p: self.calculate_cumulative_returns(quantiles=self.quantiles, period=p) for p in periods_list
-            }
+            cumulative_returns = self.calculate_cumulative_returns(quantiles=self.quantiles, period=periods)
         except Exception:
             cumulative_returns = None
 
-        # Calculate turnover
-        turnover_series = self.calculate_turnover()
-        turnover_mean = float(turnover_series.mean())
-
         return FactorAnalysisResult(
             factor_name=self.factor.name,
-            periods=periods_list,
+            periods=periods,
             quantiles=self.quantiles,
             ic_series=ic_series,
             ic_summary=ic_summary,
-            turnover_series=turnover_series,
-            turnover_mean=turnover_mean,
             quantile_returns=quantile_returns,
             cumulative_returns=cumulative_returns,
         )
 
-    def prepare_data(self, periods: list[int] | None = None, price_col: str | None = None) -> pl.DataFrame:
+    def prepare_data(self, periods: Optional[List[int]] = None, price_col: Optional[str] = None) -> pl.DataFrame:
         """
         Prepare data for analysis by aligning factor values with future returns.
 
@@ -354,7 +164,7 @@ class FactorAnalyzer:
             prices_lf = self._raw_prices.to_polars().lazy().select(select_cols)
             price_col_name = price_col
         elif self.prices is not None:
-            # self.prices is a Factor (we've narrowed the type above)
+            # self.prices is a Factor
             prices_lf = self.prices.lazy.rename({"factor": "__price__"})
             price_col_name = "__price__"
         else:
@@ -408,7 +218,7 @@ class FactorAnalyzer:
 
         ic_df = (
             self._clean_data.group_by("start_time")
-            .agg([pl.corr("factor", col, method=corr_method).alias(col) for col in period_cols])  # type: ignore[call-overload]
+            .agg([pl.corr("factor", col, method=corr_method).alias(col) for col in period_cols])
             .sort("start_time")
         )
 
@@ -592,38 +402,3 @@ class FactorAnalyzer:
         cum_ret = self.calculate_cumulative_returns(quantiles=quantiles, period=period, long_short=long_short)
         plotter = FactorAnalyzerPlotter()
         return plotter.plot_cumulative_returns(cum_ret)
-
-    def plot_ic_decay(self, periods: list[int] | None = None, method: str = "rank") -> mpl_figure.Figure:
-        """
-        Plot IC decay curve across multiple horizons.
-
-        Args:
-            periods: List of periods to plot. If None, uses all available periods.
-            method: 'rank' for Spearman, 'normal' for Pearson.
-
-        Returns:
-            matplotlib Figure
-        """
-        from .plotting_analyzer import FactorAnalyzerPlotter
-
-        ic_summary_df = self.calculate_ic_summary(method=method)
-
-        # Build ic_summary dict for plotting
-        if periods is None:
-            # Extract periods from available columns
-            periods = [int(c.replace("period_", "")) for c in ic_summary_df.columns if c.startswith("period_")]
-
-        ic_summary = {}
-        for p in periods:
-            col = f"period_{p}"
-            if col in ic_summary_df.columns:
-                ic_summary[p] = {
-                    "mean_ic": float(ic_summary_df.loc["mean", col]),
-                    "ic_ir": float(ic_summary_df.loc["ic_ir", col]),
-                }
-
-        if not ic_summary:
-            raise ValueError("No IC data available for the specified periods.")
-
-        plotter = FactorAnalyzerPlotter()
-        return plotter.plot_ic_decay(ic_summary)

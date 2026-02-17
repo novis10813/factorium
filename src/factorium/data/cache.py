@@ -4,11 +4,9 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import cast
-
 import polars as pl
 
-from ..storage import LocalStorageBackend, StorageBackend
+from ..storage import StorageBackend, LocalStorageBackend
 
 
 class BarCache:
@@ -25,9 +23,6 @@ class BarCache:
     Each day is stored as a separate Parquet file for efficient partial updates.
     """
 
-    storage: StorageBackend
-    cache_dir: Path | None  # for backward compatibility only
-
     def __init__(
         self,
         storage: "StorageBackend | None" = None,
@@ -41,7 +36,6 @@ class BarCache:
             storage: StorageBackend instance. If None, creates LocalStorageBackend.
             cache_prefix: Prefix path for cache files within storage.
             cache_dir: DEPRECATED. Use storage parameter instead.
-                When using storage (or default), cache_dir attribute is set to None.
         """
         if cache_dir is not None:
             # Backward compatibility
@@ -58,11 +52,9 @@ class BarCache:
         elif storage is None:
             self.storage = LocalStorageBackend("./Data")
             self.cache_prefix = cache_prefix
-            self.cache_dir = None  # not used when storage is the source of truth
         else:
             self.storage = storage
             self.cache_prefix = cache_prefix
-            self.cache_dir = None  # not used when storage is the source of truth
 
         if self.cache_prefix:
             self.storage.makedirs(self.cache_prefix)
@@ -119,7 +111,7 @@ class BarCache:
         cache_path = self._get_cache_path(exchange, symbols, interval_ms, data_type, market_type, date)
 
         if self.storage.exists(cache_path):
-            return cast(pl.DataFrame, self.storage.read_parquet(cache_path))
+            return self.storage.read_parquet(cache_path)
         return None
 
     def get_range(

@@ -1,11 +1,12 @@
-from math import nan
-
 import polars as pl
+
+from math import nan
+from typing import Optional, Union
 
 try:
     from typing import Self
 except ImportError:
-    from typing import Self
+    from typing_extensions import Self
 
 from ...constants import EPSILON
 
@@ -28,7 +29,7 @@ class MathOpsMixin:
         )
         return self.__class__(result_lf, f"inverse({self.name})")
 
-    def log(self, base: float | None = None) -> Self:
+    def log(self, base: Optional[float] = None) -> Self:
         if base is None:
             result_lf = self._lf.with_columns(
                 pl.when(pl.col("factor") > 0).then(pl.col("factor").log()).otherwise(None).alias("factor")
@@ -61,7 +62,7 @@ class MathOpsMixin:
         result_lf = self._lf.with_columns((pl.col("factor").sign() * pl.col("factor").abs().log1p()).alias("factor"))
         return self.__class__(result_lf, f"signed_log1p({self.name})")
 
-    def signed_pow(self, exponent: Self | float) -> Self:
+    def signed_pow(self, exponent: Union[Self, float]) -> Self:
         if isinstance(exponent, self.__class__):
             # Factor-factor path
             result_lf = self._lf.join(exponent._lf, on=["start_time", "end_time", "symbol"], suffix="_exp")
@@ -77,7 +78,7 @@ class MathOpsMixin:
             )
             return self.__class__(result_lf, f"signed_pow({self.name},{exponent})")
 
-    def pow(self, exponent: Self | float) -> Self:
+    def pow(self, exponent: Union[Self, float]) -> Self:
         if isinstance(exponent, self.__class__):
             # Factor-factor path
             result_lf = self._lf.join(exponent._lf, on=["start_time", "end_time", "symbol"], suffix="_exp")
@@ -89,19 +90,19 @@ class MathOpsMixin:
             result_lf = self._lf.with_columns(pl.col("factor").pow(pl.lit(exponent)).alias("factor"))
             return self.__class__(result_lf, f"pow({self.name},{exponent})")
 
-    def add(self, other: Self | float) -> Self:
+    def add(self, other: Union[Self, float]) -> Self:
         return self.__add__(other)
 
-    def sub(self, other: Self | float) -> Self:
+    def sub(self, other: Union[Self, float]) -> Self:
         return self.__sub__(other)
 
-    def mul(self, other: Self | float) -> Self:
+    def mul(self, other: Union[Self, float]) -> Self:
         return self.__mul__(other)
 
-    def div(self, other: Self | float) -> Self:
+    def div(self, other: Union[Self, float]) -> Self:
         return self.__truediv__(other)
 
-    def where(self, cond: Self, other: Self | float = nan) -> Self:
+    def where(self, cond: Self, other: Union[Self, float] = nan) -> Self:
         if not isinstance(cond, self.__class__):
             raise ValueError(f"Condition must be a Factor, got {type(cond)}")
 
@@ -126,7 +127,7 @@ class MathOpsMixin:
         result_lf = result_lf.select(["start_time", "end_time", "symbol", "factor"])
         return self.__class__(result_lf, f"where({self.name})")
 
-    def max(self, other: Self | float) -> Self:
+    def max(self, other: Union[Self, float]) -> Self:
         if isinstance(other, self.__class__):
             # Factor-factor path
             result_lf = self._lf.join(other._lf, on=["start_time", "end_time", "symbol"], suffix="_other")
@@ -140,7 +141,7 @@ class MathOpsMixin:
             result_lf = self._lf.with_columns(pl.max_horizontal(pl.col("factor"), pl.lit(other)).alias("factor"))
             return self.__class__(result_lf, f"max({self.name},{other})")
 
-    def min(self, other: Self | float) -> Self:
+    def min(self, other: Union[Self, float]) -> Self:
         if isinstance(other, self.__class__):
             # Factor-factor path
             result_lf = self._lf.join(other._lf, on=["start_time", "end_time", "symbol"], suffix="_other")

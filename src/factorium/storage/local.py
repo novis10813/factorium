@@ -2,6 +2,7 @@
 """Local filesystem storage backend."""
 
 from pathlib import Path
+from typing import List
 
 import polars as pl
 
@@ -16,29 +17,11 @@ class LocalStorageBackend(StorageBackend):
         self.base_path.mkdir(parents=True, exist_ok=True)
 
     def _resolve_path(self, path: str) -> Path:
-        """Resolve relative path to absolute path within base_path.
-
-        Raises:
-            ValueError: If path is absolute or attempts directory traversal
-        """
-        # Prevent absolute path override
-        if Path(path).is_absolute():
-            raise ValueError(f"Path must be relative, got: {path}")
-
-        resolved = (self.base_path / path).resolve()
-        base_resolved = self.base_path.resolve()
-
-        # Ensure the resolved path is within the base path (cross-platform)
-        try:
-            resolved.relative_to(base_resolved)
-        except ValueError:
-            raise ValueError(f"Path traversal detected: {path}")
-
-        return resolved
+        return self.base_path / path
 
     def full_path(self, path: str) -> str:
         """Get absolute path string for DuckDB queries."""
-        return str(self._resolve_path(path).resolve())
+        return str(self._resolve_path(path))
 
     def read_parquet(self, path: str) -> pl.DataFrame:
         return pl.read_parquet(self._resolve_path(path))
@@ -51,12 +34,12 @@ class LocalStorageBackend(StorageBackend):
     def exists(self, path: str) -> bool:
         return self._resolve_path(path).exists()
 
-    def glob(self, pattern: str) -> list[str]:
+    def glob(self, pattern: str) -> List[str]:
         matches = list(self.base_path.glob(pattern))
         return [str(m.relative_to(self.base_path)) for m in matches]
 
     def delete(self, path: str) -> None:
-        self._resolve_path(path).unlink(missing_ok=True)
+        self._resolve_path(path).unlink()
 
     def makedirs(self, path: str) -> None:
         self._resolve_path(path).mkdir(parents=True, exist_ok=True)

@@ -8,12 +8,11 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Literal, cast
+from typing import Optional, List, Literal
 
 import duckdb
+import pandas as pd
 import polars as pl
-
-from ..storage import get_storage_backend
 
 
 def _run_async(coro):
@@ -23,7 +22,7 @@ def _run_async(coro):
     This is necessary for Jupyter notebooks which already have a running event loop.
     """
     try:
-        asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
         # No running loop, use asyncio.run()
         return asyncio.run(coro)
@@ -133,71 +132,40 @@ from .utils import calculate_date_range  # noqa: E402
 
 class BinanceDataLoader:
     """
-        Data loader for Binance market data with automatic download.
+    Data loader for Binance market data with automatic download.
 
-        Uses DuckDB to query Parquet files stored in Hive partition format.
+    Uses DuckDB to query Parquet files stored in Hive partition format.
 
-        Args:
-            backend: Storage backend type - "local" or "s3"
-            path: For local: base directory. For S3: "bucket/prefix"
-            base_path: DEPRECATED. Use backend='local' and path instead.
-            max_concurrent_downloads: Maximum number of concurrent downloads
-            retry_attempts: Number of retry attempts for failed downloads
-            retry_delay: Delay between retries in seconds
+    Args:
+        base_path: Base directory for data storage
+        max_concurrent_downloads: Maximum number of concurrent downloads
+        retry_attempts: Number of retry attempts for failed downloads
+        retry_delay: Delay between retries in seconds
 
-        Example:
-            >>> loader = BinanceDataLoader()
-            >>> agg = loader.load_aggbar(
-            ...     symbols=["BTCUSDT"],
-            ...     data_type="aggTrades",
-            ...     market_type="futures",
-            ...     futures_type="um",
-            ...     start_date="2024-01-01",
-            ...     days=7,
-            ...     bar_type="time",
-            ...     interval=60_000,
-             ... )
-
-
-    Note:
-        When using backend='s3', data must already exist in S3.
-        Automatic download to S3 is not yet supported.
+    Example:
+        >>> loader = BinanceDataLoader()
+        >>> agg = loader.load_aggbar(
+        ...     symbols=["BTCUSDT"],
+        ...     data_type="aggTrades",
+        ...     market_type="futures",
+        ...     futures_type="um",
+        ...     start_date="2024-01-01",
+        ...     days=7,
+        ...     bar_type="time",
+        ...     interval=60_000,
+        ... )
     """
 
     def __init__(
         self,
-        backend: str = "local",
-        path: str = "./Data",
-        *,
-        base_path: str | None = None,  # Deprecated
+        base_path: str = "./Data",
         max_concurrent_downloads: int = 5,
         retry_attempts: int = 3,
         retry_delay: int = 1,
     ):
-        """...
-
-        Args:
-            backend: Storage backend type - "local" or "s3"
-            path: For local: base directory. For S3: "bucket/prefix"
-            base_path: DEPRECATED. Use backend='local' and path instead.
-            ...
-        """
-        if base_path is not None:
-            import warnings
-
-            warnings.warn(
-                "base_path is deprecated, use backend='local' and path instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            backend = "local"
-            path = base_path
-
-        self.storage = get_storage_backend(backend, path)
-        self.backend = backend
-        self.base_path = Path(path) if backend == "local" else None
+        self.base_path = Path(base_path)
         self.downloader = BinanceDataDownloader(
-            base_path=path,
+            base_path=base_path,
             max_concurrent_downloads=max_concurrent_downloads,
             retry_attempts=retry_attempts,
             retry_delay=retry_delay,
@@ -208,23 +176,6 @@ class BinanceDataLoader:
         """Setup logging configuration."""
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         self.logger = logging.getLogger(__name__)
-
-    def _build_parquet_relative_path(self, market: str, data_type: str, symbol: str, date: datetime) -> str:
-        """Build the relative path for a Parquet file.
-
-        Args:
-            market: Market string (e.g., "futures_um", "spot")
-            data_type: Data type (e.g., "aggTrades", "klines")
-            symbol: Trading symbol
-            date: Date for the partition
-
-        Returns:
-            Relative path to the Parquet file (e.g., "market=.../data.parquet")
-        """
-        return (
-            f"market={market}/data_type={data_type}/symbol={symbol}/"
-            f"year={date.year}/month={date.month:02d}/day={date.day:02d}/data.parquet"
-        )
 
     def _check_all_files_exist(
         self,
@@ -240,21 +191,24 @@ class BinanceDataLoader:
 
         current = start_dt
         while current < end_dt:
-            relative_path = self._build_parquet_relative_path(market, data_type, symbol, current)
-            if not self.storage.exists(relative_path):
+            hive_path = build_hive_path(
+                self.base_path, market, data_type, symbol, current.year, current.month, current.day
+            )
+            parquet_file = hive_path / "data.parquet"
+            if not parquet_file.exists():
                 return False
             current += timedelta(days=1)
         return True
 
     def load_aggbar(
         self,
-        symbols: str | list[str],
+        symbols: str | List[str],
         data_type: str,
         market_type: str,
         futures_type: str = "um",
-        start_date: str | None = None,
-        end_date: str | None = None,
-        days: int | None = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: Optional[int] = None,
         bar_type: Literal["time", "tick", "volume", "dollar"] = "time",
         interval: float = 60_000,
         force_download: bool = False,
@@ -372,8 +326,8 @@ class BinanceDataLoader:
         market_str = get_market_string(market_type, futures_type)
 
         # Collect aggregated data
-        all_dfs: list[pl.DataFrame] = []
-        all_metadata: list[AggBarMetadata] = []
+        all_dfs: List[pl.DataFrame] = []
+        all_metadata: List[AggBarMetadata] = []
         current = start_dt
 
         # For non-time bars, process entire date range at once (no daily chunking)
@@ -382,7 +336,7 @@ class BinanceDataLoader:
             end_ts = int(end_dt.timestamp() * 1000)
 
             parquet_pattern = adapter.build_parquet_glob(
-                base_path=self.storage.full_path(""),
+                base_path=self.base_path,
                 symbols=symbols,
                 data_type=data_type,
                 market_type=market_type,
@@ -448,8 +402,8 @@ class BinanceDataLoader:
                         # Compute metadata for cached data
                         cached_meta = AggBarMetadata(
                             symbols=cached_df["symbol"].unique().sort().to_list(),
-                            min_time=cast(int, cached_df["start_time"].min()),
-                            max_time=cast(int, cached_df["end_time"].max()),
+                            min_time=cached_df["start_time"].min(),
+                            max_time=cached_df["end_time"].max(),
                             num_rows=len(cached_df),
                         )
                         all_metadata.append(cached_meta)
@@ -463,7 +417,7 @@ class BinanceDataLoader:
                 day_end_ts = int((current + timedelta(days=1)).timestamp() * 1000)
 
                 parquet_pattern = adapter.build_parquet_glob(
-                    base_path=self.storage.full_path(""),
+                    base_path=self.base_path,
                     symbols=symbols,
                     data_type=data_type,
                     market_type=market_type,
@@ -518,13 +472,13 @@ class BinanceDataLoader:
 
     def load_aggbar_fast(
         self,
-        symbols: list[str],
+        symbols: List[str],
         data_type: str,
         market_type: str,
         futures_type: str = "um",
-        start_date: str | None = None,
-        end_date: str | None = None,
-        days: int | None = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days: Optional[int] = None,
         interval_ms: int = 60_000,
         force_download: bool = False,
         use_cache: bool = True,
@@ -573,7 +527,7 @@ class BinanceDataLoader:
 
     def _check_all_symbols_exist(
         self,
-        symbols: list[str],
+        symbols: List[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -588,7 +542,7 @@ class BinanceDataLoader:
 
     def _find_missing_files(
         self,
-        symbols: list[str],
+        symbols: List[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -607,8 +561,11 @@ class BinanceDataLoader:
             symbol_missing: list[datetime] = []
             current = start_dt
             while current < end_dt:
-                relative_path = self._build_parquet_relative_path(market, data_type, symbol, current)
-                if not self.storage.exists(relative_path):
+                hive_path = build_hive_path(
+                    self.base_path, market, data_type, symbol, current.year, current.month, current.day
+                )
+                parquet_file = hive_path / "data.parquet"
+                if not parquet_file.exists():
                     symbol_missing.append(current)
                 current += timedelta(days=1)
 
@@ -677,7 +634,7 @@ class BinanceDataLoader:
 
     def _download_all_symbols(
         self,
-        symbols: list[str],
+        symbols: List[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -707,7 +664,7 @@ class BinanceDataLoader:
 
     def _load_klines_direct(
         self,
-        symbols: list[str],
+        symbols: List[str],
         data_type: str,
         market_type: str,
         futures_type: str,
@@ -741,13 +698,14 @@ class BinanceDataLoader:
         Returns:
             AggBar object containing klines OHLCV data with timestamps in milliseconds
         """
+        import duckdb
 
         adapter = BinanceAdapter()
         market_str = get_market_string(market_type, futures_type)
 
         # Build parquet glob pattern
         parquet_pattern = adapter.build_parquet_glob(
-            base_path=self.storage.full_path(""),
+            base_path=self.base_path,
             symbols=symbols,
             data_type=data_type,
             market_type=market_type,
@@ -758,13 +716,9 @@ class BinanceDataLoader:
         # Use a single DuckDB connection for all queries
         con = duckdb.connect(":memory:")
 
-        # Configure S3 settings if using S3 backend
-        if hasattr(self.storage, "configure_duckdb_s3"):
-            self.storage.configure_duckdb_s3(con)
-
         sample_query = f"""
-            SELECT open_time
-            FROM read_parquet('{parquet_pattern}', hive_partitioning=true)
+            SELECT open_time 
+            FROM read_parquet('{parquet_pattern}', hive_partitioning=true) 
             LIMIT 1
         """
         sample_result = con.execute(sample_query).fetchone()
@@ -799,7 +753,7 @@ class BinanceDataLoader:
         #               quote_volume, count, taker_buy_volume, taker_buy_quote_volume
 
         query = f"""
-        SELECT
+        SELECT 
             open_time as start_time,
             close_time as end_time,
             symbol,
