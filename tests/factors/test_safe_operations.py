@@ -46,8 +46,8 @@ def _make_factor(
         for s_idx, sym in enumerate(symbols):
             rows.append(
                 {
-                    "start_time": t * 60000,
-                    "end_time": (t + 1) * 60000,
+                    "start_time": t * 60_000,
+                    "end_time": (t + 1) * 60_000,
                     "symbol": sym,
                     "factor": values[t * n_symbols + s_idx],
                 }

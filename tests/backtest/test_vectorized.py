@@ -170,6 +170,41 @@ class TestWeightCalculation:
             if ws > 0:
                 assert abs(ws - 1.0) < 1e-10
 
+    def test_calculate_weights_masked_assets_remain_zero_after_neutralize(self):
+        timestamps = [1704067200000, 1704070800000, 1704074400000]
+        rows = []
+        for i, ts in enumerate(timestamps):
+            for symbol, base_price, in_universe in [
+                ("A", 100.0, True),
+                ("B", 80.0, True),
+                ("C", 60.0, False),
+            ]:
+                price = base_price * (1 + 0.01 * i)
+                rows.append(
+                    {
+                        "start_time": ts,
+                        "end_time": ts + 3600000,
+                        "symbol": symbol,
+                        "open": price,
+                        "high": price,
+                        "low": price,
+                        "close": price,
+                        "volume": 1000.0,
+                        "in_universe": in_universe,
+                    }
+                )
+
+        prices = AggBar(pl.DataFrame(rows))
+        signal = prices["close"].cs_rank()
+        bt = VectorizedBacktester(prices=prices, signal=signal, neutralization="market", mask="in_universe")
+
+        combined = bt._prepare_data()
+        weighted = bt._calculate_weights(combined)
+
+        masked = weighted.filter(~pl.col("in_universe").fill_null(False))
+        assert masked["weight"].abs().max() == 0.0
+        assert "_masked_signal" not in weighted.columns
+
 
 class TestMetricsCalculation:
     """Tests for metrics calculation."""

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from factorium.universe import metadata as metadata_module
 from factorium.universe.metadata import MetadataProvider
 
 
@@ -90,3 +91,35 @@ def test_fetch_prefers_cache_without_network(tmp_path: Path, monkeypatch: pytest
 
     out = provider.fetch()
     assert out == cached
+
+
+def test_metadata_fetch_uses_run_async(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = MetadataProvider(market="um")
+    expected = {
+        "BTCUSDT": {
+            "symbol": "BTCUSDT",
+            "base_asset": "BTC",
+            "quote_asset": "USDT",
+            "status": "TRADING",
+            "listing_date": 1_700_000_000_000,
+            "is_leveraged": False,
+            "is_stablecoin_pair": False,
+        }
+    }
+
+    async def fake_fetch_async() -> dict[str, dict[str, object]]:
+        return expected
+
+    called = {"value": False}
+
+    def fake_run_async(coro):
+        called["value"] = True
+        coro.close()
+        return expected
+
+    monkeypatch.setattr(provider, "fetch_async", fake_fetch_async)
+    monkeypatch.setattr(metadata_module, "_run_async", fake_run_async)
+
+    out = provider.fetch()
+    assert out == expected
+    assert called["value"] is True

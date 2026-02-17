@@ -116,7 +116,7 @@ class MinListingAge:
                 listing_map[sym] = int(listing_date)
 
         if not listing_map:
-            return pl.lit(True)
+            return pl.lit(False)
 
         listing_expr = pl.col("symbol").replace_strict(listing_map, default=None).cast(pl.Int64, strict=False)
-        return ((pl.col("start_time") - listing_expr) >= self._min_ms) | listing_expr.is_null()
+        return ((pl.col("start_time") - listing_expr) >= self._min_ms).fill_null(False)

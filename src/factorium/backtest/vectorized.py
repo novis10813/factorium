@@ -195,9 +195,7 @@ class VectorizedBacktester:
             )
 
         if self._mask is not None:
-            df = df.with_columns(
-                pl.when(pl.col(self._mask).fill_null(False)).then(pl.col("weight")).otherwise(0.0).alias("weight")
-            ).drop("_masked_signal")
+            df = df.drop("_masked_signal")
 
         # Apply constraints
         for constraint in self.constraints:

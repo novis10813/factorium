@@ -3,7 +3,7 @@ Shared utilities for data loading and processing.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def calculate_date_range(
     producing duplicate bars with partial OHLCV data.
 
     Priority:
-    1. If both start_date and end_date are provided: [start, end]
+    1. If both start_date and end_date are provided: [start, end + 1 day)
     2. If start_date and days are provided: [start, start + days]
     3. If neither: [today_midnight - default_days, today_midnight + 1]
     4. If only days: [today_midnight - days, today_midnight + 1]
@@ -40,9 +40,10 @@ def calculate_date_range(
     try:
         if start_date and end_date:
             start = datetime.strptime(start_date, "%Y-%m-%d")
-            end = datetime.strptime(end_date, "%Y-%m-%d")
-            if start > end:
+            end_inclusive = datetime.strptime(end_date, "%Y-%m-%d")
+            if start > end_inclusive:
                 raise ValueError("Start date must be earlier than or equal to end date")
+            end = end_inclusive + timedelta(days=1)
             return start, end
 
         if start_date and days:
@@ -52,7 +53,7 @@ def calculate_date_range(
             return start, start + timedelta(days=days)
 
         # Snap to UTC midnight for consistent daily boundaries
-        today_midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         # end = start of tomorrow (exclusive) to include today's full data
         end = today_midnight + timedelta(days=1)
 

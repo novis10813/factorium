@@ -91,3 +91,17 @@ def test_universe_combines_rules_with_and_logic() -> None:
     out = _sample_df().lazy().with_columns(universe.apply(_sample_df().lazy(), metadata).alias("in_universe")).collect()
     kept_symbols = set(out.filter(pl.col("in_universe"))["symbol"].to_list())
     assert kept_symbols == {"BTCUSDT", "NEWUSDT"}
+
+
+def test_min_listing_age_excludes_symbol_when_listing_date_missing() -> None:
+    metadata = _sample_metadata()
+    metadata["NEWUSDT"].pop("listing_date")
+
+    out = (
+        _sample_df()
+        .lazy()
+        .with_columns(MinListingAge(days=90).apply(_sample_df().lazy(), metadata).alias("keep"))
+        .collect()
+    )
+    new_rows = out.filter(pl.col("symbol") == "NEWUSDT").sort("start_time")
+    assert new_rows["keep"].to_list() == [False, False]

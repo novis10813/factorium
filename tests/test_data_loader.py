@@ -8,7 +8,7 @@ import tempfile
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock, AsyncMock
 from freezegun import freeze_time
 
@@ -136,7 +136,7 @@ class TestCalculateDateRange:
         start_dt, end_dt = calculate_date_range(start_date="2024-01-01", end_date="2024-01-07", days=None)
 
         assert start_dt == datetime(2024, 1, 1)
-        assert end_dt == datetime(2024, 1, 7)
+        assert end_dt == datetime(2024, 1, 8)
 
     def test_with_start_date_and_days(self):
         """Test with start_date and days specified."""
@@ -151,8 +151,8 @@ class TestCalculateDateRange:
         start_dt, end_dt = calculate_date_range(start_date=None, end_date=None, days=7)
 
         # end = start of tomorrow (exclusive), start = end - days
-        assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
-        assert start_dt == datetime(2024, 6, 9, 0, 0, 0)
+        assert end_dt == datetime(2024, 6, 16, 0, 0, 0, tzinfo=timezone.utc)
+        assert start_dt == datetime(2024, 6, 9, 0, 0, 0, tzinfo=timezone.utc)
         # Both must be midnight-aligned
         assert start_dt.hour == 0 and start_dt.minute == 0 and start_dt.second == 0
         assert end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0
@@ -162,8 +162,8 @@ class TestCalculateDateRange:
         """Test default behavior (no params = 7 days ending tomorrow midnight)."""
         start_dt, end_dt = calculate_date_range(start_date=None, end_date=None, days=None)
 
-        assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
-        assert start_dt == datetime(2024, 6, 9, 0, 0, 0)
+        assert end_dt == datetime(2024, 6, 16, 0, 0, 0, tzinfo=timezone.utc)
+        assert start_dt == datetime(2024, 6, 9, 0, 0, 0, tzinfo=timezone.utc)
         # Both must be midnight-aligned
         assert start_dt.hour == 0 and start_dt.minute == 0 and start_dt.second == 0
         assert end_dt.hour == 0 and end_dt.minute == 0 and end_dt.second == 0
@@ -174,8 +174,8 @@ class TestCalculateDateRange:
         start_dt, end_dt = calculate_date_range(start_date=None, end_date=None, days=3)
 
         # Should snap to midnight boundaries
-        assert start_dt == datetime(2024, 6, 13, 0, 0, 0)
-        assert end_dt == datetime(2024, 6, 16, 0, 0, 0)
+        assert start_dt == datetime(2024, 6, 13, 0, 0, 0, tzinfo=timezone.utc)
+        assert end_dt == datetime(2024, 6, 16, 0, 0, 0, tzinfo=timezone.utc)
         assert start_dt.microsecond == 0
         assert end_dt.microsecond == 0
 
@@ -191,14 +191,14 @@ class TestCalculateDateRange:
         start_dt, end_dt = calculate_date_range(start_date="2023-12-28", end_date="2024-01-05", days=None)
 
         assert start_dt == datetime(2023, 12, 28)
-        assert end_dt == datetime(2024, 1, 5)
+        assert end_dt == datetime(2024, 1, 6)
 
     def test_single_day_range(self):
         """Test single day range (start == end)."""
         start_dt, end_dt = calculate_date_range(start_date="2024-01-01", end_date="2024-01-01", days=None)
 
         assert start_dt == datetime(2024, 1, 1)
-        assert end_dt == datetime(2024, 1, 1)
+        assert end_dt == datetime(2024, 1, 2)
 
     def test_start_date_with_one_day(self):
         """Test start_date with days=1."""
@@ -206,7 +206,6 @@ class TestCalculateDateRange:
 
         assert start_dt == datetime(2024, 1, 1)
         assert end_dt == datetime(2024, 1, 2)
-
 
 
 # =============================================================================
