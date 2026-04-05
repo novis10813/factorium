@@ -20,18 +20,18 @@ class BacktestResult:
 
     equity_curve: pl.DataFrame  # columns: [end_time, total_value]
     returns: pl.DataFrame  # columns: [end_time, return]
+    weights: pl.DataFrame  # columns: [end_time, symbol, weight]
+    turnover: pl.DataFrame  # columns: [end_time, turnover, cost]
     metrics: dict[str, float]
-    trades: pl.DataFrame  # columns: [end_time, symbol, qty, price, cost]
-    portfolio_history: pl.DataFrame  # columns: [end_time, cash, market_value, total_value]
 
     def to_pandas(self) -> "BacktestResultPandas":
         """Convert all DataFrames to pandas for backward compatibility."""
         return BacktestResultPandas(
             equity_curve=self.equity_curve.to_pandas(),
             returns=self.returns.to_pandas(),
+            weights=self.weights.to_pandas(),
+            turnover=self.turnover.to_pandas(),
             metrics=self.metrics,
-            trades=self.trades.to_pandas(),
-            portfolio_history=self.portfolio_history.to_pandas(),
         )
 
 
@@ -41,9 +41,9 @@ class BacktestResultPandas:
 
     equity_curve: pd.DataFrame
     returns: pd.DataFrame
+    weights: pd.DataFrame
+    turnover: pd.DataFrame
     metrics: dict[str, float]
-    trades: pd.DataFrame
-    portfolio_history: pd.DataFrame
 
 
 class VectorizedBacktester:
