@@ -419,16 +419,31 @@ class TestVectorizedBacktesterIntegration:
         assert abs(final_vec - final_orig) / final_orig < 0.01
 
     def test_vectorized_polars_output_types(self, sample_data):
-        """VectorizedBacktester should return Polars DataFrames."""
+        """VectorizedBacktester should return Polars DataFrames with correct fields."""
         signal = sample_data["close"].cs_rank()
         bt = VectorizedBacktester(prices=sample_data, signal=signal)
         result = bt.run()
 
-        import polars as pl
-
         assert isinstance(result.equity_curve, pl.DataFrame)
         assert isinstance(result.returns, pl.DataFrame)
-        assert isinstance(result.trades, pl.DataFrame)
+        assert isinstance(result.weights, pl.DataFrame)
+        assert isinstance(result.turnover, pl.DataFrame)
+
+        # Check column names
+        assert set(result.equity_curve.columns) == {"end_time", "total_value"}
+        assert set(result.returns.columns) == {"end_time", "return"}
+        assert set(result.weights.columns) == {"end_time", "symbol", "weight"}
+        assert set(result.turnover.columns) == {"end_time", "turnover", "cost"}
+
+        # Should NOT have trades or portfolio_history
+        assert not hasattr(result, "trades")
+        assert not hasattr(result, "portfolio_history")
+
+    def test_backtest_result_pandas_importable(self):
+        """BacktestResultPandas should be importable from factorium.backtest."""
+        from factorium.backtest import BacktestResultPandas
+
+        assert BacktestResultPandas is not None
 
     def test_vectorized_metrics_comparable(self, sample_data):
         """Metrics should be comparable between implementations."""
