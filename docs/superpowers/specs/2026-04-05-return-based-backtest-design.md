@@ -57,7 +57,9 @@ equity_t = equity_{t-1} * (1 + net_return_t)
 
 ### Transaction Cost Approximation
 
-Uses weight-change-based approximation rather than qty * price. This ignores weight drift within a period but is sufficient for comparing factor ideas.
+Uses **target weight differences** (`|w_t - w_{t-1}|`) to approximate turnover, not drift-adjusted weight differences. In reality, at the start of period t, the actual portfolio weights have drifted from `w_{t-1}` due to differential asset returns during period t-1. The true turnover would be `|w_t - w_{t-1,drifted}|`. We deliberately ignore this drift for simplicity.
+
+Impact: turnover may be slightly over- or under-estimated depending on whether drift moves weights toward or away from the new target. For factor research iteration this is negligible.
 
 Asymmetric fees supported: buy-side and sell-side weight changes are separated and multiplied by their respective rates.
 
@@ -97,27 +99,54 @@ Added:
 user constraints --> renormalization (always last)
 ```
 
-Renormalization is the final step, ensuring weights satisfy strategy semantics. This means constraint limits may be slightly exceeded after renormalization (e.g., `MaxPositionConstraint(0.1)` may produce weights slightly above 0.1 after renormalization to sum=1). This is the standard industry trade-off; iterative projection is not worth the complexity for fast iteration.
+Renormalization is the final step, ensuring weights satisfy strategy semantics. This means constraint limits may be slightly exceeded after renormalization (e.g., `MaxPositionConstraint(0.1)` may produce weights slightly above 0.1 after renormalization to sum=1). The exceedance is proportional to the fraction of total weight that was clipped — worst case is few assets with tight constraints (e.g., 5 assets with max_weight=0.1 in long-only means all are clipped to 0.1, then renormalized back to 0.2 each). This is the standard industry trade-off; iterative projection is not worth the complexity for fast iteration.
 
 ### Renormalization logic
 
 New function in `utils.py`:
 
 ```python
-def renormalize_weights(df: pl.DataFrame, mode: str) -> pl.DataFrame:
-    if mode == "market":
+def renormalize_weights(df: pl.DataFrame, neutralization: str) -> pl.DataFrame:
+    if neutralization == "market":
         # 1. demean: w = w - mean(w) over end_time
         # 2. scale:  w = w / sum(|w|) over end_time
         #    if sum(|w|) == 0 -> all weights = 0
-    else:  # long-only
+    else:  # neutralization == "none" (long-only)
         # 1. clip negative to 0 (defensive)
         # 2. w = w / sum(w) over end_time
         #    if sum(w) == 0 -> all weights = 0
 ```
 
+Parameter uses `neutralization` (not `mode`) to match `VectorizedBacktester.__init__` naming.
+
 ### MaxGrossExposureConstraint fix
 
 Drop `gross` column before join if it already exists, preventing duplicate column issues on repeated apply.
+
+## `summary()` Method
+
+Current `summary()` returns `num_trades: len(self._result.trades)`. With trades removed, replace with turnover-based information:
+
+```python
+def summary(self) -> dict[str, Any]:
+    return {
+        "initial_capital": self.initial_capital,
+        "final_value": ...,
+        "total_turnover": self._result.turnover["turnover"].sum(),
+        "total_cost": self._result.turnover["cost"].sum(),
+        **self._result.metrics,
+    }
+```
+
+`num_trades` is removed — in return-based mode there are no discrete trades, only continuous weight changes.
+
+## Mask Functionality
+
+The existing `mask` parameter remains unchanged. Masked symbols have their signal set to null before weight calculation, resulting in weight = 0. These zero-weight symbols do **not** participate in the renormalization denominator (sum/abs_sum), because `neutralize_weights_polars` computes mean/abs_sum over non-null signals, and masked symbols are null before the fill_null(0.0) step. Renormalization follows the same pattern — only non-zero weights contribute to the normalization factor.
+
+## Lookahead Bias Testing
+
+Current `test_no_lookahead_bias` uses `result.trades["end_time"]` to verify timing. With trades removed, replace with weight-based verification: confirm that `result.weights` at time t uses signals from time t-1 by checking that a known signal change at time t does not affect weights until time t+1.
 
 ## Metrics Simplification
 
@@ -149,8 +178,9 @@ Drop `gross` column before join if it already exists, preventing duplicate colum
 
 | File | Changes |
 |------|---------|
-| `vectorized.py` | Rewrite `_calculate_positions`, `_calculate_equity`, simplify `_calculate_metrics`, update `BacktestResult`/`BacktestResultPandas` |
+| `vectorized.py` | Rewrite `_calculate_positions` → `_calculate_returns`, rewrite `_calculate_equity`, add asset return computation in `_prepare_data`, simplify `_calculate_metrics`, update `summary()`, update `BacktestResult`/`BacktestResultPandas`/`to_pandas()` |
 | `utils.py` | Add `renormalize_weights()` function |
 | `constraints.py` | Fix `MaxGrossExposureConstraint.apply()` duplicate join |
 | `__init__.py` | Add `BacktestResultPandas` to `__all__` |
-| `tests/` | Update all VectorizedBacktester tests for new output structure |
+| `tests/` | Update all VectorizedBacktester tests for new output structure; rewrite lookahead bias test to use weights |
+| `docs/user-guide/backtest.md` | Update output structure documentation (remove trades/portfolio_history references, add weights/turnover) |
