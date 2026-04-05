@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-import numpy as np
 import pandas as pd
 import polars as pl
 
@@ -211,10 +210,11 @@ class VectorizedBacktester:
         for constraint in self.constraints:
             df = constraint.apply(df)
 
-        # Renormalize weights after constraints
-        from .utils import renormalize_weights
+        # Restore weight invariants only after constraints (already normalized above)
+        if self.constraints:
+            from .utils import renormalize_weights
 
-        df = renormalize_weights(df, neutralization=self.neutralization)
+            df = renormalize_weights(df, neutralization=self.neutralization)
 
         return df
 
@@ -284,22 +284,6 @@ class VectorizedBacktester:
         """Calculate performance metrics by delegating to calculate_metrics()."""
         equity_pd = equity_df.to_pandas()
         returns_series = equity_pd["total_value"].pct_change().dropna()
-
-        if len(returns_series) < 2:
-            return {
-                "total_return": np.nan,
-                "annual_return": np.nan,
-                "annual_volatility": np.nan,
-                "sharpe_ratio": np.nan,
-                "sortino_ratio": np.nan,
-                "calmar_ratio": np.nan,
-                "max_drawdown": np.nan,
-                "var_95": np.nan,
-                "cvar_95": np.nan,
-                "win_rate": np.nan,
-                "profit_factor": np.nan,
-            }
-
         return calculate_metrics(
             returns_series,
             risk_free_rate=0.0,
