@@ -202,7 +202,8 @@ class TestWeightCalculation:
         weighted = bt._calculate_weights(combined)
 
         masked = weighted.filter(~pl.col("in_universe").fill_null(False))
-        assert masked["weight"].abs().max() == 0.0
+        # Post-constraint renormalization demeans across all rows; masked names stay ~0 within float noise.
+        assert masked["weight"].abs().max() < 1e-10
         assert "_masked_signal" not in weighted.columns
 
 
