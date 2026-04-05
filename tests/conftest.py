@@ -19,7 +19,7 @@ def sample_aggbar():
     Includes positive, negative, and zero values to test various math edge cases.
     """
     dates = pd.date_range(start="2025-01-01", periods=10, freq="1min")
-    timestamps = dates.astype(np.int64) // 10**6
+    timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
     common_cols = {
         "start_time": timestamps,

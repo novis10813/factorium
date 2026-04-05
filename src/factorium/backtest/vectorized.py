@@ -3,12 +3,10 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
-import numpy as np
 import pandas as pd
 import polars as pl
 
 from ..aggbar import AggBar
-from ..constants import EPSILON
 from ..factors.core import Factor
 from .metrics import calculate_metrics
 from .utils import frequency_to_periods_per_year
@@ -20,18 +18,18 @@ class BacktestResult:
 
     equity_curve: pl.DataFrame  # columns: [end_time, total_value]
     returns: pl.DataFrame  # columns: [end_time, return]
+    weights: pl.DataFrame  # columns: [end_time, symbol, weight]
+    turnover: pl.DataFrame  # columns: [end_time, turnover, cost]
     metrics: dict[str, float]
-    trades: pl.DataFrame  # columns: [end_time, symbol, qty, price, cost]
-    portfolio_history: pl.DataFrame  # columns: [end_time, cash, market_value, total_value]
 
     def to_pandas(self) -> "BacktestResultPandas":
         """Convert all DataFrames to pandas for backward compatibility."""
         return BacktestResultPandas(
             equity_curve=self.equity_curve.to_pandas(),
             returns=self.returns.to_pandas(),
+            weights=self.weights.to_pandas(),
+            turnover=self.turnover.to_pandas(),
             metrics=self.metrics,
-            trades=self.trades.to_pandas(),
-            portfolio_history=self.portfolio_history.to_pandas(),
         )
 
 
@@ -41,9 +39,9 @@ class BacktestResultPandas:
 
     equity_curve: pd.DataFrame
     returns: pd.DataFrame
+    weights: pd.DataFrame
+    turnover: pd.DataFrame
     metrics: dict[str, float]
-    trades: pd.DataFrame
-    portfolio_history: pd.DataFrame
 
 
 class VectorizedBacktester:
@@ -116,22 +114,25 @@ class VectorizedBacktester:
         Run the backtest and return results.
 
         Returns:
-            BacktestResult with equity_curve, returns, and metrics
+            BacktestResult with equity_curve, returns, weights, turnover, and metrics
         """
-        # Step 1: Prepare data
+        # Step 1: Prepare data (prices, signals, asset returns)
         combined = self._prepare_data()
 
-        # Step 2: Calculate weights
+        # Step 2: Calculate weights (neutralization + constraints + renormalization)
         combined = self._calculate_weights(combined)
 
-        # Step 3: Calculate positions
-        combined = self._calculate_positions(combined)
+        # Step 3: Calculate per-symbol returns
+        combined = self._calculate_returns(combined)
 
-        # Step 4: Calculate equity
-        portfolio_history = self._calculate_equity(combined)
+        # Step 4: Calculate equity and turnover
+        equity_df, turnover_df = self._calculate_equity(combined)
 
-        # Step 5: Build result
-        self._result = self._build_result(portfolio_history, combined)
+        # Step 5: Extract final weights
+        weights_df = combined.select(["end_time", "symbol", "weight"])
+
+        # Step 6: Build result
+        self._result = self._build_result(equity_df, turnover_df, weights_df)
         return self._result
 
     def summary(self) -> dict[str, Any]:
@@ -144,7 +145,8 @@ class VectorizedBacktester:
         return {
             "initial_capital": self.initial_capital,
             "final_value": final_value,
-            "num_trades": len(self._result.trades),
+            "total_turnover": float(self._result.turnover["turnover"].sum()),
+            "total_cost": float(self._result.turnover["cost"].sum()),
             **self._result.metrics,
         }
 
@@ -163,7 +165,14 @@ class VectorizedBacktester:
         combined = prices_df.join(signal_df, on=["end_time", "symbol"], how="left")
 
         # Shift signal by 1 per symbol to use previous signal (avoid lookahead bias)
-        combined = combined.with_columns([pl.col("signal").shift(1).over("symbol").alias("prev_signal")]).drop("signal")
+        combined = combined.with_columns([
+            pl.col("signal").shift(1).over("symbol").alias("prev_signal")
+        ]).drop("signal")
+
+        # Calculate asset returns: r_t = price_t / price_{t-1} - 1
+        combined = combined.with_columns([
+            (pl.col("price") / pl.col("price").shift(1).over("symbol") - 1.0).alias("asset_return")
+        ])
 
         # Sort for stable processing
         combined = combined.sort(["end_time", "symbol"])
@@ -201,158 +210,107 @@ class VectorizedBacktester:
         for constraint in self.constraints:
             df = constraint.apply(df)
 
+        # Restore weight invariants only after constraints (already normalized above)
+        if self.constraints:
+            from .utils import renormalize_weights
+
+            df = renormalize_weights(df, neutralization=self.neutralization)
+
         return df
 
-    def _calculate_positions(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate target quantities and trades."""
-        # Target quantity: weight * capital / price
-        df = df.with_columns([(pl.col("weight") * self.initial_capital / pl.col("price")).alias("target_qty")])
+    def _calculate_returns(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Calculate portfolio returns from weights and asset returns."""
+        # Previous weight per symbol (for turnover calculation)
+        df = df.with_columns([
+            pl.col("weight").shift(1).over("symbol").fill_null(0.0).alias("prev_weight")
+        ])
 
-        # Previous quantity (from previous time period)
-        df = df.with_columns([pl.col("target_qty").shift(1).over("symbol").fill_null(0.0).alias("prev_qty")])
+        # Weight change per symbol
+        df = df.with_columns([
+            (pl.col("weight") - pl.col("prev_weight")).alias("weight_change")
+        ])
 
-        # Trade quantity
-        df = df.with_columns([(pl.col("target_qty") - pl.col("prev_qty")).alias("trade_qty")])
+        # Per-symbol contribution to portfolio return
+        df = df.with_columns([
+            (pl.col("weight") * pl.col("asset_return").fill_null(0.0)).alias("contribution")
+        ])
 
-        # Trade cost
+        return df
+
+    def _calculate_equity(self, df: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """Calculate portfolio equity and turnover from per-symbol data.
+
+        Returns:
+            Tuple of (equity_df, turnover_df).
+            equity_df columns: [end_time, total_value]
+            turnover_df columns: [end_time, turnover, cost]
+        """
         buy_rate, sell_rate = self.transaction_cost
-        df = df.with_columns(
-            [
-                pl.when(pl.col("trade_qty") > 0)
-                .then(pl.col("trade_qty") * pl.col("price") * buy_rate)
-                .otherwise(pl.col("trade_qty").abs() * pl.col("price") * sell_rate)
-                .alias("trade_cost")
-            ]
-        )
 
-        return df
-
-    def _calculate_equity(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate portfolio equity over time."""
         # Aggregate to time level
-        equity = (
+        per_period = (
             df.group_by("end_time")
-            .agg(
-                [
-                    # Market value of holdings
-                    (pl.col("target_qty") * pl.col("price")).sum().alias("market_value"),
-                    # Total transaction costs
-                    pl.col("trade_cost").sum().alias("total_trade_cost"),
-                    # Net buy amount (negative = sold)
-                    (pl.col("trade_qty") * pl.col("price")).sum().alias("net_buy"),
-                ]
-            )
+            .agg([
+                pl.col("contribution").sum().alias("gross_return"),
+                # Buy-side turnover: sum of positive weight changes
+                pl.col("weight_change").clip(lower_bound=0.0).sum().alias("buy_turnover"),
+                # Sell-side turnover: sum of abs(negative weight changes)
+                (-pl.col("weight_change").clip(upper_bound=0.0)).sum().alias("sell_turnover"),
+            ])
             .sort("end_time")
         )
 
-        # Cumulative calculations
-        equity = (
-            equity.with_columns(
-                [
-                    # Cumulative costs
-                    pl.col("total_trade_cost").cum_sum().alias("cumulative_costs"),
-                    # Cumulative net buys
-                    pl.col("net_buy").cum_sum().alias("cumulative_buys"),
-                ]
-            )
-            .with_columns(
-                [
-                    # Cash: capital - costs - net buys
-                    (self.initial_capital - pl.col("cumulative_costs") - pl.col("cumulative_buys")).alias("cash"),
-                ]
-            )
-            .with_columns(
-                [
-                    # Total value: cash + market value
-                    (pl.col("cash") + pl.col("market_value")).alias("total_value")
-                ]
-            )
-        )
+        # Calculate cost and net return
+        per_period = per_period.with_columns([
+            (pl.col("buy_turnover") + pl.col("sell_turnover")).alias("turnover"),
+            (pl.col("buy_turnover") * buy_rate + pl.col("sell_turnover") * sell_rate).alias("cost"),
+        ]).with_columns([
+            (pl.col("gross_return") - pl.col("cost")).alias("net_return"),
+        ])
 
-        return equity.select(["end_time", "cash", "market_value", "total_value"])
+        # Cumulative equity: equity_t = initial_capital * prod(1 + net_return)
+        per_period = per_period.with_columns([
+            (
+                (1.0 + pl.col("net_return")).cum_prod() * self.initial_capital
+            ).alias("total_value")
+        ])
 
-    def _calculate_metrics(self, equity_history: pl.DataFrame) -> dict[str, float]:
-        """Calculate performance metrics."""
-        # Convert to pandas for metrics calculation
-        equity_pd = equity_history.to_pandas()
+        equity_df = per_period.select(["end_time", "total_value"])
+        turnover_df = per_period.select(["end_time", "turnover", "cost"])
 
-        # Calculate period returns
-        equity_pd["return"] = equity_pd["total_value"].pct_change()
+        return equity_df, turnover_df
 
-        # Calculate metrics
-        returns_series = equity_pd["return"].dropna()
-
-        if len(returns_series) < 2:
-            return {
-                "total_return": 0.0,
-                "annual_return": 0.0,
-                "sharpe_ratio": 0.0,
-                "sortino_ratio": 0.0,
-                "calmar_ratio": 0.0,
-                "max_drawdown": 0.0,
-                "win_rate": 0.0,
-            }
-
-        metrics = calculate_metrics(
+    def _calculate_metrics(self, equity_df: pl.DataFrame) -> dict[str, float]:
+        """Calculate performance metrics by delegating to calculate_metrics()."""
+        equity_pd = equity_df.to_pandas()
+        returns_series = equity_pd["total_value"].pct_change().dropna()
+        return calculate_metrics(
             returns_series,
             risk_free_rate=0.0,
             periods_per_year=self.periods_per_year,
         )
 
-        # Ensure Sortino, Calmar, and win rate follow specific requirements
-        # Sortino ratio: annual_return / downside_std
-        downside_returns = returns_series[returns_series < 0]
-        if len(downside_returns) > 0:
-            downside_std = float(downside_returns.std() * (self.periods_per_year**0.5))
-            if downside_std > EPSILON:
-                metrics["sortino_ratio"] = metrics["annual_return"] / downside_std
-            else:
-                metrics["sortino_ratio"] = np.inf if metrics["annual_return"] > 0 else 0.0
-        else:
-            metrics["sortino_ratio"] = np.inf if metrics["annual_return"] > 0 else 0.0
-
-        # Calmar ratio: annual_return / abs(max_drawdown)
-        max_dd = abs(metrics.get("max_drawdown", 0.0))
-        if max_dd > EPSILON:
-            metrics["calmar_ratio"] = metrics["annual_return"] / max_dd
-        else:
-            metrics["calmar_ratio"] = 0.0
-
-        # Win rate: (returns > 0).sum() / len(returns)
-        metrics["win_rate"] = float((returns_series > 0).sum()) / len(returns_series)
-
-        return metrics
-
     def _build_result(
         self,
-        portfolio_history: pl.DataFrame,
-        combined_df: pl.DataFrame,
+        equity_df: pl.DataFrame,
+        turnover_df: pl.DataFrame,
+        weights_df: pl.DataFrame,
     ) -> BacktestResult:
         """Assemble final result."""
-        # Equity curve: just end_time and total_value
-        equity_curve = portfolio_history.select(["end_time", "total_value"])
-
         # Returns
         returns = (
-            portfolio_history.select(["end_time", "total_value"])
+            equity_df
             .with_columns([pl.col("total_value").pct_change().alias("return")])
             .select(["end_time", "return"])
         )
 
-        # Trades
-        trades = (
-            combined_df.select(["end_time", "symbol", "trade_qty", "price", "trade_cost"])
-            .rename({"trade_qty": "qty"})
-            .filter(pl.col("qty") != 0)
-        )
-
         # Calculate metrics
-        metrics = self._calculate_metrics(portfolio_history)
+        metrics = self._calculate_metrics(equity_df)
 
         return BacktestResult(
-            equity_curve=equity_curve,
+            equity_curve=equity_df,
             returns=returns,
+            weights=weights_df,
+            turnover=turnover_df,
             metrics=metrics,
-            trades=trades,
-            portfolio_history=portfolio_history,
         )

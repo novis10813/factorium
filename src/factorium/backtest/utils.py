@@ -210,3 +210,49 @@ def safe_divide(
         pass
 
     return a / b
+
+
+def renormalize_weights(df: pl.DataFrame, neutralization: str) -> pl.DataFrame:
+    """
+    Renormalize weights after constraint application.
+
+    For market neutral: demean then scale so sum(w)=0, sum(|w|)=1 per timestamp.
+    For long-only (none): clip negatives to 0, scale so sum(w)=1 per timestamp.
+
+    Args:
+        df: DataFrame with columns [end_time, symbol, weight]
+        neutralization: "market" or "none"
+
+    Returns:
+        DataFrame with renormalized weight column
+    """
+    if neutralization == "market":
+        # Demean per timestamp
+        df = df.with_columns(
+            (pl.col("weight") - pl.col("weight").mean().over("end_time")).alias("weight")
+        )
+        # Scale by abs sum per timestamp
+        abs_sum = pl.col("weight").abs().sum().over("end_time")
+        df = df.with_columns(
+            pl.when(abs_sum > EPSILON)
+            .then(pl.col("weight") / abs_sum)
+            .otherwise(0.0)
+            .alias("weight")
+        )
+    else:
+        # Clip negatives
+        df = df.with_columns(
+            pl.when(pl.col("weight") < 0.0)
+            .then(0.0)
+            .otherwise(pl.col("weight"))
+            .alias("weight")
+        )
+        # Scale to sum=1 per timestamp
+        w_sum = pl.col("weight").sum().over("end_time")
+        df = df.with_columns(
+            pl.when(w_sum > EPSILON)
+            .then(pl.col("weight") / w_sum)
+            .otherwise(0.0)
+            .alias("weight")
+        )
+    return df

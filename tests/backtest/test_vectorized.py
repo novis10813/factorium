@@ -202,7 +202,9 @@ class TestWeightCalculation:
         weighted = bt._calculate_weights(combined)
 
         masked = weighted.filter(~pl.col("in_universe").fill_null(False))
-        assert masked["weight"].abs().max() == 0.0
+        # Neutralization demeans using unmasked names per timestamp; masked rows were zeroed
+        # before neutralize, then pick up float noise from cross-row ops — keep near zero.
+        assert masked["weight"].abs().max() < 1e-10
         assert "_masked_signal" not in weighted.columns
 
 
@@ -313,6 +315,8 @@ class TestBackwardCompatibility:
 
         assert isinstance(pandas_result.equity_curve, pd.DataFrame)
         assert isinstance(pandas_result.returns, pd.DataFrame)
+        assert isinstance(pandas_result.weights, pd.DataFrame)
+        assert isinstance(pandas_result.turnover, pd.DataFrame)
         assert isinstance(pandas_result.metrics, dict)
 
 

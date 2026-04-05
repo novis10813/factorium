@@ -71,6 +71,21 @@ class TestMaxGrossExposureConstraint:
         gross = result["weight"].abs().sum()
         assert abs(gross - 1.0) < 1e-6
 
+    def test_double_apply_no_duplicate_columns(self):
+        """Applying the constraint twice should not create duplicate columns."""
+        weights = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "weight": [0.6, 0.5, -0.3],  # gross = 1.4
+        })
+        constraint = MaxGrossExposureConstraint(max_exposure=1.0)
+        result = constraint.apply(weights)
+        result2 = constraint.apply(result)
+        assert "gross" not in result2.columns
+        assert "gross_right" not in result2.columns
+        gross = result2["weight"].abs().sum()
+        assert abs(gross - 1.0) < 1e-6
+
     def test_requires_positive_max_exposure(self):
         """Should raise error for non-positive max_exposure."""
         with pytest.raises(ValueError, match="must be positive"):

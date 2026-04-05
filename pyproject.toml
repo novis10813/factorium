@@ -1,6 +1,6 @@
 [project]
 name = "factorium"
-version = "0.3.2"
+version = "0.4.0"
 description = "A quantitative factor analysis library for financial research"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,10 +40,6 @@ jupyter = [
     "nest-asyncio>=1.5.0",
 ]
 
-s3 = [
-    "boto3>=1.26.0",
-]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -64,14 +60,6 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
-
-# Mixin classes have expected "attr-defined" errors because they rely on
-# attributes defined in the class that uses them. This is a known pattern.
-# Also disable "call-arg" because self.__class__() calls are resolved at runtime.
-# And "operator", "no-any-return" because Self type operations are resolved at runtime.
-[[tool.mypy.overrides]]
-module = "factorium.factors.mixins.*"
-disable_error_code = ["attr-defined", "call-arg", "operator", "no-any-return"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

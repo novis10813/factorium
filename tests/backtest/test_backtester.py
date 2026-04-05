@@ -17,6 +17,7 @@ from factorium.backtest import (
     normalize_weights,
     parse_frequency_to_seconds,
 )
+from factorium.backtest.utils import renormalize_weights
 
 
 class TestNeutralizeWeights:
@@ -58,6 +59,59 @@ class TestNormalizeWeights:
         assert "B" not in weights.index
         assert abs(weights.sum() - 1.0) < 1e-10
         assert len(weights) == 2
+
+
+class TestRenormalizeWeights:
+    """Tests for post-constraint weight renormalization."""
+
+    def test_market_neutral_sum_zero_abs_one(self):
+        """After renormalization, market neutral weights sum to 0 with abs sum 1."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 4,
+            "symbol": ["A", "B", "C", "D"],
+            "weight": [0.3, 0.1, -0.05, -0.1],  # sum != 0, abs_sum != 1
+        })
+        result = renormalize_weights(df, neutralization="market")
+        weights = result["weight"]
+        assert abs(weights.sum()) < 1e-10
+        assert abs(weights.abs().sum() - 1.0) < 1e-10
+
+    def test_long_only_sum_one_all_positive(self):
+        """After renormalization, long-only weights sum to 1 and are all >= 0."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "weight": [0.5, 0.3, -0.1],  # has a negative weight
+        })
+        result = renormalize_weights(df, neutralization="none")
+        weights = result["weight"]
+        assert abs(weights.sum() - 1.0) < 1e-10
+        assert (weights >= -1e-10).all()
+
+    def test_all_zero_weights_stay_zero(self):
+        """If all weights are zero, they should stay zero."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "weight": [0.0, 0.0, 0.0],
+        })
+        result_market = renormalize_weights(df, neutralization="market")
+        assert result_market["weight"].abs().sum() == 0.0
+        result_long = renormalize_weights(df, neutralization="none")
+        assert result_long["weight"].abs().sum() == 0.0
+
+    def test_multiple_timestamps(self):
+        """Renormalization should work per-timestamp independently."""
+        df = pl.DataFrame({
+            "end_time": [1000, 1000, 2000, 2000],
+            "symbol": ["A", "B", "A", "B"],
+            "weight": [0.6, -0.2, 0.3, 0.1],
+        })
+        result = renormalize_weights(df, neutralization="market")
+        for t in [1000, 2000]:
+            subset = result.filter(pl.col("end_time") == t)["weight"]
+            assert abs(subset.sum()) < 1e-10
+            assert abs(subset.abs().sum() - 1.0) < 1e-10
 
 
 class TestFrequencyParsing:
@@ -140,7 +194,7 @@ class TestBacktester:
     @pytest.fixture
     def sample_data(self):
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -193,8 +247,11 @@ class TestBacktester:
 
         assert "initial_capital" in summary
         assert "final_value" in summary
-        assert "num_trades" in summary
+        assert "total_turnover" in summary
+        assert "total_cost" in summary
         assert "sharpe_ratio" in summary
+        # num_trades is removed in return-based mode
+        assert "num_trades" not in summary
 
     def test_no_lookahead_bias(self, sample_data):
         close = sample_data["close"]
@@ -203,11 +260,12 @@ class TestBacktester:
         bt = Backtester(prices=sample_data, signal=signal)
         result = bt.run()
 
-        assert len(result.trades) > 0
-        # Vectorized result uses end_time instead of timestamp, and is Polars
-        first_trade_ts = result.trades["end_time"][0]
-        first_signal_ts = signal.data["end_time"].min()
-        assert first_trade_ts > first_signal_ts
+        # Weights should exist and have data
+        assert len(result.weights) > 0
+        # First timestamp should have zero weights (no prev signal)
+        first_time = result.weights["end_time"].min()
+        first_weights = result.weights.filter(pl.col("end_time") == first_time)["weight"]
+        assert first_weights.abs().sum() < 1e-10, "First period should have zero weights (no previous signal)"
 
     def test_invalid_entry_price(self, sample_data):
         signal = sample_data["close"].cs_rank()
@@ -246,7 +304,7 @@ class TestEdgeCases:
     def test_single_symbol_backtest(self):
         """Single asset should work without cross-sectional operations failing."""
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -306,7 +364,7 @@ class TestVectorizedBacktesterIntegration:
     def sample_data(self):
         np.random.seed(42)
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -330,114 +388,76 @@ class TestVectorizedBacktesterIntegration:
         return AggBar(df)
 
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
-    def test_vectorized_vs_original_equity_curve(self, sample_data):
-        """VectorizedBacktester should produce similar equity curve to Backtester."""
+    def test_vectorized_produces_reasonable_equity(self, sample_data):
+        """VectorizedBacktester should produce a reasonable equity curve."""
         close = sample_data["close"]
         signal = close.cs_rank()
 
-        # Run original backtester
-        bt_orig = LegacyBacktester(
+        bt = VectorizedBacktester(
             prices=sample_data,
             signal=signal,
             transaction_cost=0.0001,
             initial_capital=10000.0,
             neutralization="market",
         )
-        result_orig = bt_orig.run()
+        result = bt.run()
 
-        # Run vectorized backtester
-        bt_vec = VectorizedBacktester(
-            prices=sample_data,
-            signal=signal,
-            transaction_cost=0.0001,
-            initial_capital=10000.0,
-            neutralization="market",
-        )
-        result_vec = bt_vec.run()
+        # Equity should start near initial capital
+        first_value = result.equity_curve["total_value"][0]
+        assert abs(first_value - 10000.0) < 100.0  # within 1% on first period
 
-        # Compare final equity
-        final_orig = result_orig.equity_curve.iloc[-1]
-
-        # Vectorized result is Polars
-        final_vec = result_vec.equity_curve["total_value"].to_list()[-1]
-
-        # Use 1% tolerance
-        assert abs(final_vec - final_orig) / final_orig < 0.01
+        # Should have returns for each period
+        assert len(result.returns) == len(result.equity_curve)
 
     def test_vectorized_polars_output_types(self, sample_data):
-        """VectorizedBacktester should return Polars DataFrames."""
+        """VectorizedBacktester should return Polars DataFrames with correct fields."""
         signal = sample_data["close"].cs_rank()
         bt = VectorizedBacktester(prices=sample_data, signal=signal)
         result = bt.run()
 
-        import polars as pl
-
         assert isinstance(result.equity_curve, pl.DataFrame)
         assert isinstance(result.returns, pl.DataFrame)
-        assert isinstance(result.trades, pl.DataFrame)
+        assert isinstance(result.weights, pl.DataFrame)
+        assert isinstance(result.turnover, pl.DataFrame)
 
-    def test_vectorized_metrics_comparable(self, sample_data):
-        """Metrics should be comparable between implementations."""
+        # Check column names
+        assert set(result.equity_curve.columns) == {"end_time", "total_value"}
+        assert set(result.returns.columns) == {"end_time", "return"}
+        assert set(result.weights.columns) == {"end_time", "symbol", "weight"}
+        assert set(result.turnover.columns) == {"end_time", "turnover", "cost"}
+
+        # Should NOT have trades or portfolio_history
+        assert not hasattr(result, "trades")
+        assert not hasattr(result, "portfolio_history")
+
+    def test_backtest_result_pandas_importable(self):
+        """BacktestResultPandas should be importable from factorium.backtest."""
+        from factorium.backtest import BacktestResultPandas
+
+        assert BacktestResultPandas is not None
+
+    def test_vectorized_metrics_complete(self, sample_data):
+        """Metrics should contain all expected keys."""
         close = sample_data["close"]
         signal = close.cs_rank()
 
-        bt_orig = Backtester(prices=sample_data, signal=signal)
-        result_orig = bt_orig.run()
-
-        bt_vec = VectorizedBacktester(prices=sample_data, signal=signal)
-        result_vec = bt_vec.run()
-
-        # Compare sharpe_ratio
-        assert abs(result_vec.metrics["sharpe_ratio"] - result_orig.metrics["sharpe_ratio"]) < 0.1
-        # Compare total_return
-        assert abs(result_vec.metrics["total_return"] - result_orig.metrics["total_return"]) < 0.01
-
-
-class TestBacktesterCashHandling:
-    def test_cash_never_negative(self):
-        # BTC starts cheap, becomes very expensive
-        # ETH stays cheap
-        dates = pd.date_range(start="2025-01-01", periods=10, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
-        rows = []
-        for i, ts in enumerate(timestamps):
-            for symbol in ["BTC", "ETH"]:
-                if symbol == "BTC":
-                    price = 10.0 if i < 5 else 10000.0  # Price jumps 1000x
-                else:
-                    price = 10.0
-                rows.append(
-                    {
-                        "start_time": ts,
-                        "end_time": ts + 3600000,
-                        "symbol": symbol,
-                        "open": price,
-                        "high": price,
-                        "low": price,
-                        "close": price,
-                        "volume": 1000.0,
-                    }
-                )
-
-        df = pl.DataFrame(rows)
-        agg = AggBar(df)
-
-        # Signal always wants to buy BTC
-        signal = agg["close"].cs_rank()
-
-        bt = Backtester(
-            prices=agg,
-            signal=signal,
-            initial_capital=1000.0,  # Not enough for expensive BTC
-            neutralization="none",
-            transaction_cost=0.0,
-        )
+        bt = VectorizedBacktester(prices=sample_data, signal=signal)
         result = bt.run()
 
-        # Should complete without error
-        assert isinstance(result, BacktestResult)
-        # Cash should never go negative
-        assert result.portfolio_history["cash"].min() >= -1e-10
+        expected_keys = {
+            "total_return",
+            "annual_return",
+            "annual_volatility",
+            "sharpe_ratio",
+            "sortino_ratio",
+            "calmar_ratio",
+            "max_drawdown",
+            "var_95",
+            "cvar_95",
+            "win_rate",
+            "profit_factor",
+        }
+        assert expected_keys.issubset(result.metrics.keys())
 
 
 class TestMissingPriceHandling:
@@ -446,7 +466,7 @@ class TestMissingPriceHandling:
     def test_missing_price_symbol_excluded_from_holdings(self):
         """Symbols with missing prices should be excluded from target holdings."""
         dates = pd.date_range(start="2025-01-01", periods=10, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):
@@ -491,11 +511,13 @@ class TestMissingPriceHandling:
         )
         result = bt.run()
 
-        # After bar 5, ETH should have no trades
-        eth_trades_after_5 = result.trades.filter(
+        # After bar 5, ETH should have zero weight (no price data)
+        eth_weights_after_5 = result.weights.filter(
             (pl.col("symbol") == "ETH") & (pl.col("end_time") > timestamps[4] + 3600000)
         )
-        assert len(eth_trades_after_5) == 0
+        # ETH weights should be 0 or absent when price data is missing
+        if len(eth_weights_after_5) > 0:
+            assert eth_weights_after_5["weight"].abs().sum() < 1e-10
 
 
 class TestLegacyBacktester:
@@ -504,7 +526,7 @@ class TestLegacyBacktester:
     @pytest.fixture
     def sample_data(self):
         dates = pd.date_range(start="2025-01-01", periods=20, freq="1h")
-        timestamps = dates.astype(np.int64) // 10**6
+        timestamps = dates.astype("datetime64[ms]").astype(np.int64)
 
         rows = []
         for i, ts in enumerate(timestamps):

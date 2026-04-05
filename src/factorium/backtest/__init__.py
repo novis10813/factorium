@@ -22,7 +22,7 @@ from .utils import (
     normalize_weights,
     parse_frequency_to_seconds,
 )
-from .vectorized import BacktestResult, VectorizedBacktester
+from .vectorized import BacktestResult, BacktestResultPandas, VectorizedBacktester
 
 # Backward compatibility: Backtester is now an alias for VectorizedBacktester
 Backtester = VectorizedBacktester
@@ -31,6 +31,7 @@ __all__ = [
     "Backtester",
     "LegacyBacktester",
     "BacktestResult",
+    "BacktestResultPandas",
     "LegacyBacktestResult",
     "VectorizedBacktester",
     "Portfolio",
