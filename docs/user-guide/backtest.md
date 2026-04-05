@@ -69,10 +69,14 @@ print(result.metrics)
     - `calmar_ratio`
     - `max_drawdown`
     - `win_rate`
-- **`trades: pl.DataFrame`**  
-  - 欄位：`["end_time", "symbol", "qty", "price", "cost"]`
-- **`portfolio_history: pl.DataFrame`**  
-  - 欄位：`["end_time", "cash", "market_value", "total_value"]`
+    - `var_95`, `cvar_95`
+    - `profit_factor`
+- **`weights: pl.DataFrame`**  
+  - 欄位：`["end_time", "symbol", "weight"]`
+  - 每期每標的的最終權重（已套用約束與正規化）
+- **`turnover: pl.DataFrame`**  
+  - 欄位：`["end_time", "turnover", "cost"]`
+  - 每期的換手率與交易成本
 
 如需 pandas 版本，可呼叫：
 
@@ -158,7 +162,11 @@ bt = Backtester(
 result = bt.run()
 ```
 
-> **注意**：約束只負責「限制」權重，不會自動重新正規化使權重和維持 1；若需要額外規則，可以自訂 `WeightConstraint` 子類別。
+> **注意**：約束套用後會自動進行權重正規化（renormalization），確保：
+> - 市場中性模式：`sum(w) = 0`，`sum(|w|) = 1`
+> - Long-only 模式：`sum(w) = 1`，`w >= 0`
+>
+> 正規化可能導致個別權重略微超過約束上限，超出幅度與被截斷權重的佔比成正比。
 
 ---
 
@@ -193,4 +201,4 @@ print(result.metrics)
 4. **執行回測**：
    - 直接使用 `Backtester(prices=agg, signal=signal)`；或
    - 透過 `ResearchSession.backtest(signal)`。
-5. **查看結果**：讀取 `BacktestResult.metrics`、`equity_curve`、`trades` 等欄位，或將結果轉成 pandas 作進一步分析。
+5. **查看結果**：讀取 `BacktestResult.metrics`、`equity_curve`、`weights`、`turnover` 等欄位，或將結果轉成 pandas 作進一步分析。
