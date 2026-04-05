@@ -83,6 +83,10 @@ class MaxGrossExposureConstraint(WeightConstraint):
         self.max_exposure = max_exposure
 
     def apply(self, weights: pl.DataFrame) -> pl.DataFrame:
+        # Drop gross column if it already exists (idempotent)
+        if "gross" in weights.columns:
+            weights = weights.drop("gross")
+
         # Group by end_time, calculate gross, scale if needed
         gross = weights.group_by("end_time").agg(pl.col("weight").abs().sum().alias("gross"))
 
