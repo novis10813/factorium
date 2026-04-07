@@ -7,6 +7,9 @@ wheels/
 *.egg-info
 site/
 
+# Local git worktrees (superpowers / agent isolation)
+.worktrees/
+
 # Virtual environments
 .venv
 
