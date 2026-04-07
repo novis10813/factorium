@@ -22,6 +22,7 @@ from ..factors.core import Factor
 from ..factors.parser import FactorExpressionParser
 
 if TYPE_CHECKING:
+    from ..backtest.pipeline import AlphaPipeline
     from ..factors.analyzer import FactorAnalysisResult
 
 
@@ -41,7 +42,7 @@ class ResearchSession:
     Example:
         >>> session = ResearchSession(aggbar)
         >>> signal = session.factor("close").cs_rank()
-        >>> result = session.backtest(signal, neutralization="market")
+        >>> result = session.backtest(signal)
         >>> print(result.metrics["sharpe_ratio"])
     """
 
@@ -267,7 +268,7 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
     def backtest(
         self,
         signal: Factor,
-        neutralization: str = "market",
+        pipeline: "AlphaPipeline | None" = None,
         entry_price: str = "close",
         frequency: str | None = None,
         initial_capital: float | None = None,
@@ -278,7 +279,7 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
 
         Args:
             signal: Factor to use as trading signal
-            neutralization: "market" for neutral, "none" for long-only
+            pipeline: AlphaPipeline for signal-to-weight conversion (default: Raw + market-neutral)
             entry_price: Price column to use for entries
             frequency: Rebalancing frequency (defaults to session default)
             initial_capital: Initial capital (defaults to session default)
@@ -292,15 +293,10 @@ Period: {self.data.timestamps.min()} to {self.data.timestamps.max()}
             >>> result = session.backtest(signal)
             >>> print(result.metrics["sharpe_ratio"])
         """
-        # Ensure neutralization is of correct type for VectorizedBacktester
-        # which expects Literal["market", "none"]
-        if neutralization not in ["market", "none"]:
-            raise ValueError(f"neutralization must be 'market' or 'none', got {neutralization}")
-
         bt = VectorizedBacktester(
             prices=self.data,
             signal=signal,
-            neutralization=neutralization,  # type: ignore
+            pipeline=pipeline,
             entry_price=entry_price,
             frequency=frequency or self.default_frequency,
             initial_capital=initial_capital or self.default_initial_capital,

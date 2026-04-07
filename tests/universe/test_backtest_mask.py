@@ -1,6 +1,8 @@
 import polars as pl
 
 from factorium import AggBar
+from factorium.backtest.allocators import LongOnlyAllocator, MarketNeutralAllocator
+from factorium.backtest.pipeline import AlphaPipeline
 from factorium.backtest.vectorized import VectorizedBacktester
 
 
@@ -68,7 +70,12 @@ def test_backtester_mask_sets_outside_symbols_weight_to_zero() -> None:
     prices = _make_prices()
     signal = _make_signal()
 
-    bt = VectorizedBacktester(prices=prices, signal=signal, mask="in_universe", neutralization="none")
+    bt = VectorizedBacktester(
+        prices=prices,
+        signal=signal,
+        mask="in_universe",
+        pipeline=AlphaPipeline(allocator=LongOnlyAllocator()),
+    )
     combined = bt._prepare_data()
     weighted = bt._calculate_weights(combined)
 
@@ -80,7 +87,12 @@ def test_backtester_mask_applies_before_market_neutralization() -> None:
     prices = _make_prices()
     signal = _make_signal()
 
-    bt = VectorizedBacktester(prices=prices, signal=signal, mask="in_universe", neutralization="market")
+    bt = VectorizedBacktester(
+        prices=prices,
+        signal=signal,
+        mask="in_universe",
+        pipeline=AlphaPipeline(allocator=MarketNeutralAllocator()),
+    )
     weighted = bt._calculate_weights(bt._prepare_data())
 
     sample_time = sorted(set(weighted["end_time"].to_list()))[1]
