@@ -101,3 +101,60 @@ class LongOnlyAllocator(WeightAllocator):
             .otherwise(0.0)
             .alias("weight")
         )
+
+
+class TopNAllocator(WeightAllocator):
+    """Equal-weight top N allocator. Optionally long-short (top N long, bottom N short)."""
+
+    def __init__(self, n: int, long_short: bool = False):
+        self.n = n
+        self.long_short = long_short
+
+    def allocate(
+        self, df: pl.DataFrame, signal_col: str, group_col: str
+    ) -> pl.DataFrame:
+        rank = pl.col(signal_col).rank(descending=True).over(group_col)
+        count = pl.col(signal_col).count().over(group_col)
+
+        long_w = pl.lit(1.0 / self.n)
+
+        if self.long_short:
+            short_w = pl.lit(-1.0 / self.n)
+            weight = (
+                pl.when(rank <= self.n)
+                .then(long_w)
+                .when(rank > count - self.n)
+                .then(short_w)
+                .otherwise(0.0)
+            )
+        else:
+            weight = pl.when(rank <= self.n).then(long_w).otherwise(0.0)
+
+        return df.with_columns(weight.fill_null(0.0).alias("weight"))
+
+    def renormalize(self, df: pl.DataFrame, group_col: str) -> pl.DataFrame:
+        if self.long_short:
+            pos_count = (pl.col("weight") > EPSILON).sum().over(group_col)
+            neg_count = (pl.col("weight") < -EPSILON).sum().over(group_col)
+            weight = (
+                pl.when(pl.col("weight") > EPSILON)
+                .then(
+                    pl.when(pos_count > 0).then(1.0 / pos_count).otherwise(0.0)
+                )
+                .when(pl.col("weight") < -EPSILON)
+                .then(
+                    pl.when(neg_count > 0).then(-1.0 / neg_count).otherwise(0.0)
+                )
+                .otherwise(0.0)
+            )
+        else:
+            pos_count = (pl.col("weight") > EPSILON).sum().over(group_col)
+            weight = (
+                pl.when(pl.col("weight") > EPSILON)
+                .then(
+                    pl.when(pos_count > 0).then(1.0 / pos_count).otherwise(0.0)
+                )
+                .otherwise(0.0)
+            )
+
+        return df.with_columns(weight.alias("weight"))
