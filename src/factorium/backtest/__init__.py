@@ -4,6 +4,12 @@ from .backtester import (
 from .backtester import (
     IterativeBacktestResult as LegacyBacktestResult,
 )
+from .allocators import (
+    LongOnlyAllocator,
+    MarketNeutralAllocator,
+    TopNAllocator,
+    WeightAllocator,
+)
 from .constraints import (
     LongOnlyConstraint,
     MarketNeutralConstraint,
@@ -12,6 +18,14 @@ from .constraints import (
     WeightConstraint,
 )
 from .metrics import calculate_metrics
+from .normalizers import (
+    MinMaxNormalizer,
+    Normalizer,
+    RankNormalizer,
+    RawNormalizer,
+    ZScoreNormalizer,
+)
+from .pipeline import AlphaPipeline
 from .portfolio import Portfolio
 from .utils import (
     MAX_PERIODS_PER_YEAR,
@@ -24,28 +38,37 @@ from .utils import (
 )
 from .vectorized import BacktestResult, BacktestResultPandas, VectorizedBacktester
 
-# Backward compatibility: Backtester is now an alias for VectorizedBacktester
 Backtester = VectorizedBacktester
 
 __all__ = [
+    "AlphaPipeline",
     "Backtester",
-    "LegacyBacktester",
     "BacktestResult",
     "BacktestResultPandas",
+    "LegacyBacktester",
     "LegacyBacktestResult",
-    "VectorizedBacktester",
-    "Portfolio",
-    "calculate_metrics",
-    "WeightConstraint",
-    "MaxPositionConstraint",
+    "LongOnlyAllocator",
     "LongOnlyConstraint",
-    "MaxGrossExposureConstraint",
+    "MarketNeutralAllocator",
     "MarketNeutralConstraint",
+    "MaxGrossExposureConstraint",
+    "MaxPositionConstraint",
+    "MAX_PERIODS_PER_YEAR",
+    "MIN_PERIODS_PER_YEAR",
+    "MinMaxNormalizer",
+    "Normalizer",
+    "POSITION_EPSILON",
+    "Portfolio",
+    "RankNormalizer",
+    "RawNormalizer",
+    "TopNAllocator",
+    "VectorizedBacktester",
+    "WeightAllocator",
+    "WeightConstraint",
+    "ZScoreNormalizer",
+    "calculate_metrics",
     "frequency_to_periods_per_year",
     "neutralize_weights",
     "normalize_weights",
     "parse_frequency_to_seconds",
-    "POSITION_EPSILON",
-    "MIN_PERIODS_PER_YEAR",
-    "MAX_PERIODS_PER_YEAR",
 ]

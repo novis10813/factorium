@@ -4,7 +4,6 @@ import re
 
 import numpy as np
 import pandas as pd
-import polars as pl
 
 from ..constants import (
     EPSILON,
@@ -127,38 +126,6 @@ def normalize_weights(signals: pd.Series) -> pd.Series:
     return pd.Series(positive_signals / total)
 
 
-def neutralize_weights_polars(
-    df: pl.DataFrame, signal_col: str = "signal", group_col: str = "end_time"
-) -> pl.DataFrame:
-    """
-    Neutralize weights to sum to zero (market neutral).
-
-    Polars version for use in vectorized backtester.
-
-    Args:
-        df: DataFrame with signal column
-        signal_col: Name of signal column
-        group_col: Column to group by (usually timestamp)
-
-    Returns:
-        DataFrame with 'weight' column added
-    """
-    # Demean signal
-    df = df.with_columns([(pl.col(signal_col) - pl.col(signal_col).mean().over(group_col)).alias("signal_demeaned")])
-
-    # Normalize by sum of absolute values
-    df = df.with_columns(
-        [
-            (pl.col("signal_demeaned") / pl.col("signal_demeaned").abs().sum().over(group_col))
-            .fill_nan(0.0)
-            .fill_null(0.0)
-            .alias("weight")
-        ]
-    )
-
-    return df.drop("signal_demeaned")
-
-
 def safe_divide(
     a: float | np.ndarray | pd.Series,
     b: float | np.ndarray | pd.Series,
@@ -210,49 +177,3 @@ def safe_divide(
         pass
 
     return a / b
-
-
-def renormalize_weights(df: pl.DataFrame, neutralization: str) -> pl.DataFrame:
-    """
-    Renormalize weights after constraint application.
-
-    For market neutral: demean then scale so sum(w)=0, sum(|w|)=1 per timestamp.
-    For long-only (none): clip negatives to 0, scale so sum(w)=1 per timestamp.
-
-    Args:
-        df: DataFrame with columns [end_time, symbol, weight]
-        neutralization: "market" or "none"
-
-    Returns:
-        DataFrame with renormalized weight column
-    """
-    if neutralization == "market":
-        # Demean per timestamp
-        df = df.with_columns(
-            (pl.col("weight") - pl.col("weight").mean().over("end_time")).alias("weight")
-        )
-        # Scale by abs sum per timestamp
-        abs_sum = pl.col("weight").abs().sum().over("end_time")
-        df = df.with_columns(
-            pl.when(abs_sum > EPSILON)
-            .then(pl.col("weight") / abs_sum)
-            .otherwise(0.0)
-            .alias("weight")
-        )
-    else:
-        # Clip negatives
-        df = df.with_columns(
-            pl.when(pl.col("weight") < 0.0)
-            .then(0.0)
-            .otherwise(pl.col("weight"))
-            .alias("weight")
-        )
-        # Scale to sum=1 per timestamp
-        w_sum = pl.col("weight").sum().over("end_time")
-        df = df.with_columns(
-            pl.when(w_sum > EPSILON)
-            .then(pl.col("weight") / w_sum)
-            .otherwise(0.0)
-            .alias("weight")
-        )
-    return df
