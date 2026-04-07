@@ -1,7 +1,8 @@
 # tests/backtest/test_allocators.py
 import polars as pl
+import pytest
 
-from factorium.backtest.allocators import MarketNeutralAllocator
+from factorium.backtest.allocators import LongOnlyAllocator, MarketNeutralAllocator
 
 
 class TestMarketNeutralAllocator:
@@ -77,4 +78,90 @@ class TestMarketNeutralAllocator:
             "weight": [0.0, 0.0, 0.0],
         })
         result = MarketNeutralAllocator().renormalize(df, "end_time")
+        assert result["weight"].abs().sum() < 1e-10
+
+
+class TestLongOnlyAllocator:
+    def test_weights_sum_to_one(self):
+        """Long-only weights should sum to one."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "signal": [1.0, 2.0, 3.0],
+        })
+        result = LongOnlyAllocator().allocate(df, "signal", "end_time")
+        assert abs(result["weight"].sum() - 1.0) < 1e-10
+
+    def test_all_weights_non_negative(self):
+        """All weights should be >= 0."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 4,
+            "symbol": ["A", "B", "C", "D"],
+            "signal": [1.0, 2.0, 3.0, -1.0],
+        })
+        result = LongOnlyAllocator().allocate(df, "signal", "end_time")
+        assert (result["weight"] >= -1e-10).all()
+
+    def test_negative_signals_get_zero_weight(self):
+        """Negative signals should get zero weight."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "signal": [1.0, -2.0, 3.0],
+        })
+        result = LongOnlyAllocator().allocate(df, "signal", "end_time")
+        assert result["weight"][1] == 0.0
+
+    def test_proportional_to_signal(self):
+        """Weights should be proportional to positive signal values."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "signal": [1.0, 2.0, 3.0],
+        })
+        result = LongOnlyAllocator().allocate(df, "signal", "end_time")
+        weights = result["weight"].to_list()
+        # B should be 2x A, C should be 3x A
+        assert abs(weights[1] / weights[0] - 2.0) < 1e-10
+        assert abs(weights[2] / weights[0] - 3.0) < 1e-10
+
+    def test_all_negative_signals_produce_zero_weights(self):
+        """If all signals are negative, all weights should be zero."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "signal": [-1.0, -2.0, -3.0],
+        })
+        result = LongOnlyAllocator().allocate(df, "signal", "end_time")
+        assert result["weight"].abs().sum() < 1e-10
+
+    def test_null_signal_gets_zero_weight(self):
+        """Null signals should produce zero weight."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "signal": [1.0, None, 3.0],
+        })
+        result = LongOnlyAllocator().allocate(df, "signal", "end_time")
+        assert result["weight"][1] == 0.0
+
+    def test_renormalize_clips_negatives_and_sums_to_one(self):
+        """renormalize should clip negatives and scale to sum=1."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "weight": [0.5, 0.3, -0.1],
+        })
+        result = LongOnlyAllocator().renormalize(df, "end_time")
+        assert (result["weight"] >= -1e-10).all()
+        assert abs(result["weight"].sum() - 1.0) < 1e-10
+
+    def test_renormalize_all_zero_stays_zero(self):
+        """All-zero weights should stay zero after renormalize."""
+        df = pl.DataFrame({
+            "end_time": [1000] * 3,
+            "symbol": ["A", "B", "C"],
+            "weight": [0.0, 0.0, 0.0],
+        })
+        result = LongOnlyAllocator().renormalize(df, "end_time")
         assert result["weight"].abs().sum() < 1e-10

@@ -66,3 +66,38 @@ class MarketNeutralAllocator(WeightAllocator):
             .otherwise(0.0)
             .alias("weight")
         )
+
+
+class LongOnlyAllocator(WeightAllocator):
+    """Long-only allocator: sum(w)=1, all w>=0. Only positive signals get weight."""
+
+    def allocate(
+        self, df: pl.DataFrame, signal_col: str, group_col: str
+    ) -> pl.DataFrame:
+        positive = (
+            pl.when(pl.col(signal_col) > 0)
+            .then(pl.col(signal_col))
+            .otherwise(0.0)
+        )
+        w_sum = positive.sum().over(group_col)
+        weight = (
+            pl.when(w_sum > EPSILON)
+            .then(positive / w_sum)
+            .otherwise(0.0)
+        )
+        return df.with_columns(weight.fill_null(0.0).alias("weight"))
+
+    def renormalize(self, df: pl.DataFrame, group_col: str) -> pl.DataFrame:
+        df = df.with_columns(
+            pl.when(pl.col("weight") < 0.0)
+            .then(0.0)
+            .otherwise(pl.col("weight"))
+            .alias("weight")
+        )
+        w_sum = pl.col("weight").sum().over(group_col)
+        return df.with_columns(
+            pl.when(w_sum > EPSILON)
+            .then(pl.col("weight") / w_sum)
+            .otherwise(0.0)
+            .alias("weight")
+        )
