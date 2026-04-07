@@ -1,7 +1,7 @@
 """Vectorized backtester using Polars for performance."""
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 import polars as pl
@@ -9,6 +9,7 @@ import polars as pl
 from ..aggbar import AggBar
 from ..factors.core import Factor
 from .metrics import calculate_metrics
+from .pipeline import AlphaPipeline
 from .utils import frequency_to_periods_per_year
 
 
@@ -54,9 +55,8 @@ class VectorizedBacktester:
         entry_price: str = "close",
         transaction_cost: float | tuple[float, float] = 0.0003,
         initial_capital: float = 10000.0,
-        neutralization: Literal["market", "none"] = "market",
+        pipeline: AlphaPipeline | None = None,
         frequency: str = "1h",
-        constraints: list | None = None,
         mask: str | None = None,
     ):
         """
@@ -68,24 +68,22 @@ class VectorizedBacktester:
             entry_price: Column name in prices for execution price
             transaction_cost: Transaction cost as % of notional, or (buy, sell) tuple
             initial_capital: Starting portfolio value
-            neutralization: "market" for market neutral, "none" for long-only
+            pipeline: AlphaPipeline for signal-to-weight conversion (default: Raw + MarketNeutral)
             frequency: Frequency string (e.g., "1h", "1d")
-            constraints: List of WeightConstraint objects to apply
+            mask: Column name in prices to filter tradeable universe
         """
         self.initial_capital = initial_capital
 
-        # Normalize transaction cost
         if isinstance(transaction_cost, (int, float)):
             self.transaction_cost = (float(transaction_cost), float(transaction_cost))
         else:
             self.transaction_cost = transaction_cost
 
         self.entry_price = entry_price
-        self.neutralization = neutralization
+        self.pipeline = pipeline or AlphaPipeline()
         self.frequency = frequency
         self.periods_per_year = frequency_to_periods_per_year(frequency)
         self._periods_per_year = self.periods_per_year  # Alias for backward compatibility
-        self.constraints = constraints or []
         self._mask = mask
 
         # Convert inputs to Polars DataFrames
@@ -119,7 +117,7 @@ class VectorizedBacktester:
         # Step 1: Prepare data (prices, signals, asset returns)
         combined = self._prepare_data()
 
-        # Step 2: Calculate weights (neutralization + constraints + renormalization)
+        # Step 2: Calculate weights via pipeline
         combined = self._calculate_weights(combined)
 
         # Step 3: Calculate per-symbol returns
@@ -180,7 +178,7 @@ class VectorizedBacktester:
         return combined
 
     def _calculate_weights(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate portfolio weights (cross-sectional)."""
+        """Calculate portfolio weights via pipeline."""
         signal_col = "prev_signal"
         if self._mask is not None:
             signal_col = "_masked_signal"
@@ -191,30 +189,10 @@ class VectorizedBacktester:
                 .alias(signal_col)
             )
 
-        if self.neutralization == "market":
-            # Market neutral: (signal - mean) / sum(|signal - mean|)
-            from .utils import neutralize_weights_polars
-
-            df = neutralize_weights_polars(df, signal_col, "end_time")
-        else:  # long-only
-            # Normalize positive signals to sum to 1
-            positive_only = pl.when(pl.col(signal_col) > 0).then(pl.col(signal_col)).otherwise(0.0)
-            df = df.with_columns(
-                [(positive_only / positive_only.sum().over("end_time")).fill_nan(0.0).fill_null(0.0).alias("weight")]
-            )
+        df = self.pipeline.transform(df, signal_col, "end_time")
 
         if self._mask is not None:
             df = df.drop("_masked_signal")
-
-        # Apply constraints
-        for constraint in self.constraints:
-            df = constraint.apply(df)
-
-        # Restore weight invariants only after constraints (already normalized above)
-        if self.constraints:
-            from .utils import renormalize_weights
-
-            df = renormalize_weights(df, neutralization=self.neutralization)
 
         return df
 
