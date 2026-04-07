@@ -17,7 +17,8 @@ from factorium.backtest import (
     normalize_weights,
     parse_frequency_to_seconds,
 )
-from factorium.backtest.utils import renormalize_weights
+from factorium.backtest.allocators import LongOnlyAllocator, MarketNeutralAllocator
+from factorium.backtest.pipeline import AlphaPipeline
 
 
 class TestNeutralizeWeights:
@@ -59,59 +60,6 @@ class TestNormalizeWeights:
         assert "B" not in weights.index
         assert abs(weights.sum() - 1.0) < 1e-10
         assert len(weights) == 2
-
-
-class TestRenormalizeWeights:
-    """Tests for post-constraint weight renormalization."""
-
-    def test_market_neutral_sum_zero_abs_one(self):
-        """After renormalization, market neutral weights sum to 0 with abs sum 1."""
-        df = pl.DataFrame({
-            "end_time": [1000] * 4,
-            "symbol": ["A", "B", "C", "D"],
-            "weight": [0.3, 0.1, -0.05, -0.1],  # sum != 0, abs_sum != 1
-        })
-        result = renormalize_weights(df, neutralization="market")
-        weights = result["weight"]
-        assert abs(weights.sum()) < 1e-10
-        assert abs(weights.abs().sum() - 1.0) < 1e-10
-
-    def test_long_only_sum_one_all_positive(self):
-        """After renormalization, long-only weights sum to 1 and are all >= 0."""
-        df = pl.DataFrame({
-            "end_time": [1000] * 3,
-            "symbol": ["A", "B", "C"],
-            "weight": [0.5, 0.3, -0.1],  # has a negative weight
-        })
-        result = renormalize_weights(df, neutralization="none")
-        weights = result["weight"]
-        assert abs(weights.sum() - 1.0) < 1e-10
-        assert (weights >= -1e-10).all()
-
-    def test_all_zero_weights_stay_zero(self):
-        """If all weights are zero, they should stay zero."""
-        df = pl.DataFrame({
-            "end_time": [1000] * 3,
-            "symbol": ["A", "B", "C"],
-            "weight": [0.0, 0.0, 0.0],
-        })
-        result_market = renormalize_weights(df, neutralization="market")
-        assert result_market["weight"].abs().sum() == 0.0
-        result_long = renormalize_weights(df, neutralization="none")
-        assert result_long["weight"].abs().sum() == 0.0
-
-    def test_multiple_timestamps(self):
-        """Renormalization should work per-timestamp independently."""
-        df = pl.DataFrame({
-            "end_time": [1000, 1000, 2000, 2000],
-            "symbol": ["A", "B", "A", "B"],
-            "weight": [0.6, -0.2, 0.3, 0.1],
-        })
-        result = renormalize_weights(df, neutralization="market")
-        for t in [1000, 2000]:
-            subset = result.filter(pl.col("end_time") == t)["weight"]
-            assert abs(subset.sum()) < 1e-10
-            assert abs(subset.abs().sum() - 1.0) < 1e-10
 
 
 class TestFrequencyParsing:
@@ -226,7 +174,7 @@ class TestBacktester:
             signal=signal,
             transaction_cost=0.0001,
             initial_capital=10000.0,
-            neutralization="market",
+            pipeline=AlphaPipeline(allocator=MarketNeutralAllocator()),
         )
 
         result = bt.run()
@@ -326,7 +274,7 @@ class TestEdgeCases:
         agg = AggBar(df)
         signal = agg["close"].cs_rank()
 
-        bt = Backtester(prices=agg, signal=signal, neutralization="none")
+        bt = Backtester(prices=agg, signal=signal, pipeline=AlphaPipeline(allocator=LongOnlyAllocator()))
         result = bt.run()
 
         assert isinstance(result, BacktestResult)
@@ -398,7 +346,7 @@ class TestVectorizedBacktesterIntegration:
             signal=signal,
             transaction_cost=0.0001,
             initial_capital=10000.0,
-            neutralization="market",
+            pipeline=AlphaPipeline(allocator=MarketNeutralAllocator()),
         )
         result = bt.run()
 
@@ -507,7 +455,7 @@ class TestMissingPriceHandling:
         bt = Backtester(
             prices=agg,
             signal=signal,
-            neutralization="market",
+            pipeline=AlphaPipeline(allocator=MarketNeutralAllocator()),
         )
         result = bt.run()
 

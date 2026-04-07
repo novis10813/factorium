@@ -1,27 +1,8 @@
-import polars as pl
 import numpy as np
 import pandas as pd
 import pytest
-from factorium.backtest.utils import neutralize_weights_polars, safe_divide
+from factorium.backtest.utils import safe_divide
 from factorium.constants import EPSILON
-
-
-def test_neutralize_weights_polars():
-    """Should create market neutral weights."""
-    df = pl.DataFrame(
-        {
-            "end_time": [1000] * 3,
-            "symbol": ["A", "B", "C"],
-            "signal": [0.8, 0.5, 0.2],
-        }
-    )
-
-    result = neutralize_weights_polars(df, "signal", "end_time")
-
-    # Weights should sum to zero
-    assert abs(result["weight"].sum()) < 1e-10
-    # Absolute weights should sum to 1
-    assert abs(result["weight"].abs().sum() - 1.0) < 1e-10
 
 
 def test_safe_divide_uses_epsilon():
